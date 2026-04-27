@@ -1,7 +1,6 @@
 import os
-import asyncio
 from fastapi import FastAPI, Request, Response
-from telegram import Update
+from telegram import Update, Bot
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, ChatMemberHandler,
@@ -29,15 +28,20 @@ from handlers.user import (
 )
 from handlers.chat import message_handler
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
-# Global bot application
+print(f"[STARTUP] BOT_TOKEN length: {len(BOT_TOKEN)}")
+print(f"[STARTUP] BOT_TOKEN starts with: {BOT_TOKEN[:10] if BOT_TOKEN else 'EMPTY'}")
+
 _bot_app = None
 
 def get_bot_app():
     global _bot_app
     if _bot_app is not None:
         return _bot_app
+
+    if not BOT_TOKEN:
+        raise ValueError("BOT_TOKEN is empty!")
 
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -82,7 +86,15 @@ app = FastAPI()
 
 @app.get("/")
 async def root():
-    return {"status": "Cutie Pie Bot is running 💘"}
+    return {"status": "Cutie Pie Bot is running 💘", "token_ok": bool(BOT_TOKEN)}
+
+@app.get("/debug")
+async def debug():
+    return {
+        "token_length": len(BOT_TOKEN),
+        "token_prefix": BOT_TOKEN[:10] if BOT_TOKEN else "EMPTY",
+        "token_ok": bool(BOT_TOKEN)
+    }
 
 @app.get("/set_webhook")
 async def set_webhook(request: Request):
@@ -103,7 +115,7 @@ async def webhook(request: Request):
         await bot_app.process_update(update)
         return Response(content="ok", status_code=200)
     except Exception as e:
-        print(f"Webhook error: {e}")
-        return Response(content="error", status_code=500)
+        print(f"[ERROR] Webhook error: {e}")
+        return Response(content=f"error: {str(e)}", status_code=500)
 
 handler = app
