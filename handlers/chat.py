@@ -1,38 +1,19 @@
-"""
-Smart Chat Handler — Merged with ASGroupBot features
-─────────────────────────────────────────────────────
-1. Bot sirf tab bolegi jab:
-   - Usse directly @mention kiya gaya ho
-   - Uske trigger words aaye (cutie, cutie pie etc)
-   - Koi bina kisi ke reply ke message aaye (orphan)
-   - 5-6 messages ke baad kabhi kabhi (interjection)
-
-2. Premium auto-moderation:
-   - Anti-link, Anti-forward, Flood control
-   - Locked message types
-   - Auto-delete files (scheduled)
-
-3. Movie File Obfuscation (settings se on/off)
-
-4. 12% chance pe sticker bhi bhejti hai
-
-5. Admin apne message ko khud reply kare → pattern sikha
-"""
+# Smart Chat Handler + Movie File Obfuscation + Auto-Mod Guards
 
 import os
-import re
 import asyncio
 import random
 from datetime import datetime, timedelta
+
 from telegram import Update
 from telegram.ext import ContextTypes
-from telegram.constants import ChatAction, ChatMemberStatus
+from telegram.constants import ChatAction
 
 from core.db import (
     save_user, save_message, is_blocked,
     increment_counter, reset_counter,
-    get_group_setting, is_premium, is_flooding,
-    schedule_delete, save_active_member, find_pattern
+    get_setting, is_premium, is_flooding,
+    schedule_delete, save_active_member
 )
 from core.brain import find_reply, learn_from_reply
 from core.persona import (
@@ -47,20 +28,29 @@ BAD_WORDS = [
     "randi", "saali", "mc", "bc", "sala", "bhosdike"
 ]
 
-_URL_RE = re.compile(
+_URL_RE = __import__("re").compile(
     r'(https?://\S+|www\.\S+|t\.me/\S+|\S+\.(com|net|org|io|gg|xyz)\S*)',
-    re.IGNORECASE,
+    __import__("re").IGNORECASE,
 )
 
 def has_url(text: str) -> bool:
     return bool(_URL_RE.search(text or ""))
 
+# ── Typing delay (Vercel-safe, no long sleep) ──────────────────────────
+
+async def typing_delay(context, chat_id, text=""):
+    # Vercel ko fast rakhne ke liye minimal sleep
+    await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
+
+# ── Movie file name obfuscation ────────────────────────────────────────
+
 def safe_text_maker(text):
     if not text:
         return ""
     replacements = {
-        'a': '@', 'A': '@', 'i': '!', 'I': '!', 's': '$', 'S': '$',
-        'o': '0', 'O': '0', 'e': '£', 'E': '£', 't': '†', 'T': '†'
+        'a': '@', 'A': '@', 'i': '!', 'I': '!',
+        's': '$', 'S': '$', 'o': '0', 'O': '0',
+        'e': '£', 'E': '£', 't': '†', 'T': '†'
     }
     safe_name = "".join(
         replacements.get(char, char) if random.random() > 0.2 else char
@@ -68,12 +58,7 @@ def safe_text_maker(text):
     )
     return random.choice([" ⚡️ ", " 🎬 ", " ✨ ", " 🍿 "]).join(safe_name.split())
 
-# ── Typing delay (Vercel ke liye fast) ────────────────────────────────
-
-async def typing_delay(context, chat_id, text=""):
-    await context.bot.send_chat_action(chat_id, ChatAction.TYPING)
-
-# ── Movie File Handler ─────────────────────────────────────────────────
+# ── Movie / Document file handler ─────────────────────────────────────
 
 async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
@@ -82,8 +67,8 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not message or not (message.document or message.video):
         return
 
-    settings_movie = get_group_setting(chat.id, "movie_on", True)
-    if not settings_movie:
+    # Settings check
+    if not get_setting(chat.id, "movie_on", True):
         return
 
     original_name = (
@@ -106,126 +91,7 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         elif message.video:
             await context.bot.send_video(chat_id=chat.id, video=file_id, caption=new_caption)
     except Exception as e:
-        print(f"[ERROR] Movie file handler: {e}")
-
-# ── Premium Auto-Moderation Guard ─────────────────────────────────────
-
-async def group_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Premium auto-mod: anti-link, anti-fwd, lock types, flood, auto-delete"""
-    message = update.effective_message
-    chat    = update.effective_chat
-    user    = update.effective_user
-
-    if not message or not user or user.is_bot:
-        return False
-
-    chat_id = chat.id
-    user_id = user.id
-
-    # Save active member for tagall
-    save_active_member(chat_id, user_id)
-
-    if not is_premium(chat_id):
-        return False
-
-    # Check if user is admin (admins exempt)
-    try:
-        member = await context.bot.get_chat_member(chat_id, user_id)
-        user_is_admin = member.status in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER) or user_id == ADMIN_ID
-    except Exception:
-        user_is_admin = user_id == ADMIN_ID
-
-    if user_is_admin:
-        return False
-
-    text = message.text or message.caption or ""
-
-    # 1. Anti-link
-    if get_group_setting(chat_id, "antilink_on", False):
-        if has_url(text):
-            try:
-                await message.delete()
-                notif = await context.bot.send_message(
-                    chat_id,
-                    f"🔗 {user.mention_html()} — Links allowed nahi hain is group mein!",
-                    parse_mode="HTML"
-                )
-                await asyncio.sleep(5)
-                await notif.delete()
-            except Exception:
-                pass
-            return True
-
-    # 2. Anti-forward
-    if get_group_setting(chat_id, "antifwd_on", False):
-        if message.forward_date:
-            try:
-                await message.delete()
-                notif = await context.bot.send_message(
-                    chat_id,
-                    f"↪️ {user.mention_html()} — Forwarded messages allowed nahi!",
-                    parse_mode="HTML"
-                )
-                await asyncio.sleep(5)
-                await notif.delete()
-            except Exception:
-                pass
-            return True
-
-    # 3. Locked types
-    locked = get_group_setting(chat_id, "locked_types", []) or []
-    if locked:
-        msg_type = None
-        if message.sticker:
-            msg_type = "stickers"
-        elif message.animation:
-            msg_type = "gifs"
-        elif message.poll:
-            msg_type = "polls"
-        elif message.photo or message.video or message.document:
-            msg_type = "media"
-
-        if msg_type and msg_type in locked:
-            try:
-                await message.delete()
-            except Exception:
-                pass
-            return True
-
-    # 4. Flood control
-    if get_group_setting(chat_id, "flood_on", False):
-        flood_limit = get_group_setting(chat_id, "flood_limit", 5)
-        if is_flooding(chat_id, user_id, limit=flood_limit, window=10):
-            try:
-                from telegram import ChatPermissions
-                until = datetime.now() + timedelta(minutes=5)
-                await context.bot.restrict_chat_member(
-                    chat_id, user_id,
-                    permissions=ChatPermissions(can_send_messages=False),
-                    until_date=until
-                )
-                notif = await context.bot.send_message(
-                    chat_id,
-                    f"⚡ {user.mention_html()} — Flood ke liye <b>5 min muted!</b>",
-                    parse_mode="HTML"
-                )
-                await asyncio.sleep(8)
-                try:
-                    await notif.delete()
-                except Exception:
-                    pass
-            except Exception:
-                pass
-            return True
-
-    # 5. Auto-delete schedule
-    if (get_group_setting(chat_id, "autodel_on", False)
-            and (message.document or message.video or message.audio)):
-        del_secs = get_group_setting(chat_id, "autodel_time", 3600)
-        delete_at = datetime.now() + timedelta(seconds=del_secs)
-        schedule_delete(chat_id, message.message_id, delete_at)
-
-    return False
+        print(f"[ERROR] movie_file_handler: {e}")
 
 # ── Main message handler ───────────────────────────────────────────────
 
@@ -237,28 +103,22 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message or not user or user.is_bot:
         return
 
+    # Blocked user ignore
     if is_blocked(user.id):
         return
 
     text = message.text or message.caption or ""
 
+    # Save user + message
     save_user(user)
-
     if text:
         save_message(chat.id, user.id, text)
 
-    # Run premium auto-mod
+    # Track active member for /tagall
     if chat.type != "private":
-        blocked_by_mod = await group_guard(update, context)
-        if blocked_by_mod:
-            return
+        save_active_member(chat.id, user.id)
 
-    # Check chatbot setting
-    if chat.type != "private":
-        if not get_group_setting(chat.id, "chat_bot_on", True):
-            return
-
-    # ── ADMIN LEARNING ────────────────────────────────────────────────
+    # ── ADMIN SELF-REPLY LEARNING ─────────────────────────────────────
     if (
         user.id == ADMIN_ID
         and message.reply_to_message
@@ -276,12 +136,117 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await message.reply_text("✅ Seekh liya maine~ 🧠")
                 return
 
-    # ── Private chat ──────────────────────────────────────────────────
+    # ── PRIVATE CHAT ─────────────────────────────────────────────────
     if chat.type == "private":
+        # Check premium conversation first
+        from handlers.admin import pm_premium_conversation
+        handled = await pm_premium_conversation(update, context)
+        if handled:
+            return
         await _send_smart_reply(update, context, text, chat.id)
         return
 
-    # ── GROUP logic ───────────────────────────────────────────────────
+    # ── GROUP AUTO-MOD (premium) ──────────────────────────────────────
+    if is_premium(chat.id):
+        try:
+            member = await context.bot.get_chat_member(chat.id, user.id)
+            user_is_admin = member.status in ("administrator", "creator")
+        except Exception:
+            user_is_admin = (user.id == ADMIN_ID)
+
+        if not user_is_admin:
+            # 1. Anti-link
+            if get_setting(chat.id, "antilink_on", False) and has_url(text):
+                try:
+                    await message.delete()
+                    notif = await context.bot.send_message(
+                        chat.id,
+                        f"🔗 {user.mention_html()} — Links allowed nahi hain is group mein!",
+                        parse_mode="HTML"
+                    )
+                    await asyncio.sleep(5)
+                    await notif.delete()
+                except Exception:
+                    pass
+                return
+
+            # 2. Anti-forward
+            if get_setting(chat.id, "antifwd_on", False) and (
+                message.forward_from or message.forward_from_chat
+            ):
+                try:
+                    await message.delete()
+                    notif = await context.bot.send_message(
+                        chat.id,
+                        f"↪️ {user.mention_html()} — Forwarded messages allowed nahi!",
+                        parse_mode="HTML"
+                    )
+                    await asyncio.sleep(5)
+                    await notif.delete()
+                except Exception:
+                    pass
+                return
+
+            # 3. Locked types
+            locked = get_setting(chat.id, "locked_types", []) or []
+            if locked:
+                msg_type = None
+                if message.sticker:
+                    msg_type = "stickers"
+                elif message.animation:
+                    msg_type = "gifs"
+                elif message.poll:
+                    msg_type = "polls"
+                elif message.photo or message.video or message.document:
+                    msg_type = "media"
+                if msg_type and msg_type in locked:
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
+                    return
+
+            # 4. Flood control
+            if get_setting(chat.id, "flood_on", False):
+                flood_limit = get_setting(chat.id, "flood_limit", 5)
+                if is_flooding(chat.id, user.id, limit=flood_limit, window=10):
+                    try:
+                        from telegram import ChatPermissions
+                        until = datetime.now() + timedelta(minutes=5)
+                        await context.bot.restrict_chat_member(
+                            chat.id, user.id,
+                            permissions=ChatPermissions(can_send_messages=False),
+                            until_date=until
+                        )
+                        notif = await context.bot.send_message(
+                            chat.id,
+                            f"⚡ {user.mention_html()} — Flood ke liye <b>5 min muted!</b>",
+                            parse_mode="HTML"
+                        )
+                        await asyncio.sleep(8)
+                        try:
+                            await notif.delete()
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    return
+
+    # ── FILE AUTO-DELETE (premium) ────────────────────────────────────
+    if (
+        is_premium(chat.id)
+        and get_setting(chat.id, "autodel_on", False)
+        and (message.document or message.video or message.audio)
+    ):
+        del_secs = get_setting(chat.id, "autodel_time", 3600)
+        delete_at = datetime.now() + timedelta(seconds=del_secs)
+        schedule_delete(chat.id, message.message_id, delete_at)
+
+    # ── CHATBOT CHECK ─────────────────────────────────────────────────
+    if not get_setting(chat.id, "chat_bot_on", True):
+        return
+
+    # ── GROUP CHATBOT LOGIC ───────────────────────────────────────────
     text_lower = text.lower()
 
     bot_username = context.bot.username or ""
@@ -332,9 +297,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _send_smart_reply(update, context, text, chat_id):
     message = update.effective_message
-
     reply = find_reply(text) if text else None
-
     if reply:
         await typing_delay(context, chat_id, reply)
         await message.reply_text(reply)
