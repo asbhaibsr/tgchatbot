@@ -5,7 +5,14 @@ import random
 import time
 
 MONGODB_URI = os.environ.get("MONGODB_URI", "")
-client = MongoClient(MONGODB_URI)
+client = MongoClient(
+    MONGODB_URI,
+    tls=True,
+    tlsAllowInvalidCertificates=True,
+    serverSelectionTimeoutMS=5000,
+    connectTimeoutMS=5000,
+    socketTimeoutMS=5000
+)
 db = client["cutie_pie_bot"]
 
 users_col     = db["users"]
