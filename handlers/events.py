@@ -1,12 +1,20 @@
+# Event Handlers — Welcome/Goodbye, Bot Add/Remove, Callbacks (help/about/settings/premium)
+
 import os
+import asyncio
+import random
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
-from core.db import save_user, save_group, remove_group
-from core.persona import get_welcome, get_goodbye, BOT_NAME
+
+from core.db import save_user, save_group, remove_group, get_setting
+from core.persona import BOT_NAME
 
 ADMIN_ID      = int(os.environ.get("ADMIN_ID", "0"))
 LOG_CHANNEL   = os.environ.get("LOG_CHANNEL_ID", "")
+OWNER_USERNAME = "@asbhaibsr"
+UPDATE_CHANNEL = "@asbhai_bsr"
 
 async def send_log(context, text):
     if LOG_CHANNEL:
@@ -26,7 +34,6 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     save_user(user)
 
-    # Log channel mein bhejna
     username_link = f"@{user.username}" if user.username else f'<a href="tg://user?id={user.id}">{user.full_name}</a>'
     await send_log(
         context,
@@ -36,18 +43,42 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"└ Link: {username_link}"
     )
 
-    btn = InlineKeyboardMarkup([
+    me = await context.bot.get_me()
+    markup = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("💘 Help", callback_data="help"),
-            InlineKeyboardButton("🌸 About", callback_data="about")
-        ]
+            InlineKeyboardButton("📖 ʜᴇʟᴘ", callback_data="help_main"),
+            InlineKeyboardButton("ℹ️ ᴀʙᴏᴜᴛ", callback_data="about"),
+        ],
+        [InlineKeyboardButton("👑 ɢᴇᴛ ᴘʀᴇᴍɪᴜᴍ", callback_data="prem_info")],
+        [InlineKeyboardButton("📢 ᴜᴘᴅᴀᴛᴇꜱ", url=f"https://t.me/{UPDATE_CHANNEL.lstrip('@')}")],
     ])
-    await update.message.reply_text(
-        f"Heyy! Main hoon {BOT_NAME} 💘\n\n"
-        f"Group mein add karo mujhe aur maza karo~ 🌸\n"
-        f"/help likhkar sab commands dekho!",
-        reply_markup=btn
-    )
+    if update.effective_chat.type == "private":
+        await update.message.reply_text(
+            f"<b>Heyy {user.first_name}! 🌸</b>\n\n"
+            f"Main hoon <b>{BOT_NAME}</b> — tumhara powerful Telegram group manager!\n\n"
+            "🛡 <b>Features:</b>\n"
+            "• Full moderation — ban, mute, kick, warn\n"
+            "• Anti-spam, anti-link, flood control\n"
+            "• Custom welcome & goodbye\n"
+            "• Premium subscription system\n"
+            "• Pattern-based self-learning chat bot\n"
+            "• Movie file copyright protection\n\n"
+            "👇 Group mein add karo aur /settings se sab set karo!",
+            parse_mode="HTML",
+            reply_markup=markup
+        )
+    else:
+        await update.message.reply_text(
+            f"<b>Heyy! Main hoon {BOT_NAME} 🌸</b>\n"
+            "Admin commands ke liye /help karo!",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(
+                    "💬 ᴘᴍ ꜰᴏʀ ʜᴇʟᴘ",
+                    url=f"https://t.me/{me.username}?start=help"
+                )
+            ]])
+        )
 
 # ── Bot group mein add hua / nikala ───────────────────────────────────
 
@@ -56,16 +87,12 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
     chat   = result.chat
     new    = result.new_chat_member
 
-    # Bot add hua
     if new.status in ("member", "administrator"):
         save_group(chat)
-
-        # Group link banao
         try:
             link = await context.bot.export_chat_invite_link(chat.id)
         except Exception:
             link = "N/A"
-
         await send_log(
             context,
             f"🟢 <b>Bot Added to Group</b>\n"
@@ -73,15 +100,16 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
             f"├ ID: <code>{chat.id}</code>\n"
             f"└ Link: {link}"
         )
-
         await context.bot.send_message(
             chat_id=chat.id,
-            text=f"Heyy sab! Main hoon {BOT_NAME} 💘\n"
-                 f"Ab is group mein maza aayega~ 🌸\n"
-                 f"/help se sab commands dekho!"
+            text=(
+                f"<b>Heyy sab! Main hoon {BOT_NAME} 🌸</b>\n\n"
+                "Group management ke liye ready hoon!\n\n"
+                "👮 Admin /settings karo sab configure karne ke liye.\n"
+                "👑 Premium features ke liye /premium dekhna."
+            ),
+            parse_mode="HTML"
         )
-
-    # Bot hataaya gaya
     elif new.status in ("left", "kicked", "banned"):
         remove_group(chat.id)
         await send_log(
@@ -97,74 +125,93 @@ async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     chat    = update.effective_chat
     message = update.effective_message
 
+    if not get_setting(chat.id, "welcome_on", True):
+        return
+
     for member in message.new_chat_members:
         if member.is_bot:
             continue
         save_user(member)
 
-        # Group invite link
-        try:
-            link = await context.bot.export_chat_invite_link(chat.id)
-        except Exception:
-            link = None
-
-        welcome = get_welcome(member.full_name)
-        if link:
-            welcome += f"\n\n🔗 Group Link: {link}"
-
-        btn = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📖 Rules dekho", callback_data=f"rules_{chat.id}")]
-        ])
-
-        await message.reply_text(welcome, reply_markup=btn)
+        custom_msg = get_setting(chat.id, "welcome_msg", None)
+        if custom_msg:
+            text = custom_msg.replace("{name}", member.full_name)
+            text = text.replace("{group}", chat.title or "")
+        else:
+            text = (
+                f"<b>Heyy {member.full_name}! 🌸</b>\n\n"
+                f"Welcome to <b>{chat.title}</b>!\n"
+                "Enjoy karo aur rules follow karo~ 💘\n"
+                "/rules se group rules dekho."
+            )
+        await message.reply_text(text, parse_mode="HTML")
 
 # ── Member group se gaya ──────────────────────────────────────────────
 
 async def left_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     member  = message.left_chat_member
-    if member and not member.is_bot:
-        await message.reply_text(get_goodbye(member.full_name))
+    if not member or member.is_bot:
+        return
+    if not get_setting(update.effective_chat.id, "goodbye_on", True):
+        return
+    custom_msg = get_setting(update.effective_chat.id, "goodbye_msg", None)
+    if custom_msg:
+        text = custom_msg.replace("{name}", member.full_name)
+    else:
+        text = f"<b>{member.full_name} chale gaye!</b> 👋\nMiss karenge~"
+    await message.reply_text(text, parse_mode="HTML")
 
-# ── Callback buttons ──────────────────────────────────────────────────
+# ── Master callback handler ────────────────────────────────────────────
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     data  = query.data
 
-    if data == "help":
-        text = (
-            "🌸 <b>Commands</b>\n\n"
-            "👤 <b>User:</b>\n"
-            "/start - Bot se milo\n"
-            "/help - Help dekho\n"
-            "/font [text] - Stylish font\n"
-            "/shayari - Shayari suno\n"
-            "/joke - Joke suno\n"
-            "/compliment - Compliment lo\n"
-            "/roast @user - Roast karo\n\n"
-            "👑 <b>Admin:</b>\n"
-            "/ban @user\n"
-            "/unban @user\n"
-            "/mute @user\n"
-            "/unmute @user\n"
-            "/kick @user\n"
-            "/warn @user\n"
-            "/pin\n"
-            "/setwelcome [msg]\n"
-            "/teach trigger | response\n"
-            "/forget trigger\n"
-            "/broadcast [msg]"
-        )
-        await query.edit_message_text(text, parse_mode="HTML")
+    # Route to admin callbacks first (settings, premium, unban, etc.)
+    admin_cb_data = (
+        "unban_", "unmute_", "resetwarn_",
+        "prem_", "tog_", "cycle_", "settings_", "prem_locked",
+        "close", "rep_warn_", "rep_mute_", "rep_ban_"
+    )
+    admin_prefixes = (
+        "unban_", "unmute_", "resetwarn_",
+        "prem_", "tog_", "cycle_", "settings_",
+        "rep_"
+    )
+    admin_exact = ("prem_locked", "close", "prem_info", "prem_start")
 
-    elif data == "about":
-        text = (
-            f"💘 <b>{BOT_NAME}</b>\n\n"
-            "Main ek smart group bot hoon~\n"
-            "Self-learning karta hoon 🧠\n"
-            "Group manage bhi karta hoon 👑\n"
-            "Aur sabse baat bhi karta hoon 🌸"
+    is_admin_cb = data in admin_exact or any(data.startswith(p) for p in admin_prefixes)
+
+    if is_admin_cb:
+        from handlers.admin import admin_callback_handler
+        return await admin_callback_handler(update, context)
+
+    # User callbacks
+    user_cb = ("help_main", "help_admin", "help_user")
+    if data in user_cb:
+        from handlers.user import user_callback_handler
+        return await user_callback_handler(update, context)
+
+    # about
+    if data == "about":
+        await query.answer()
+        markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("📢 Channel", url=f"https://t.me/{UPDATE_CHANNEL.lstrip('@')}"),
+                InlineKeyboardButton("👤 Owner",   url=f"https://t.me/{OWNER_USERNAME.lstrip('@')}"),
+            ],
+            [InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data="help_main")],
+        ])
+        from core.persona import BOT_NAME
+        await query.edit_message_text(
+            f"🤖 <b>{BOT_NAME}</b>\n\n"
+            "Powerful Telegram Group Manager 🌸\n\n"
+            f"👨‍💻 Owner: {OWNER_USERNAME}\n"
+            f"📢 Channel: {UPDATE_CHANNEL}",
+            parse_mode="HTML",
+            reply_markup=markup
         )
-        await query.edit_message_text(text, parse_mode="HTML")
+        return
+
+    await query.answer()
