@@ -116,7 +116,7 @@ def teach_pattern(text: str, admin_id: int):
 
 # ── Smart reply dhundna ───────────────────────────────────────────────
 
-def find_reply(text: str) -> str | None:
+def find_reply(text: str):
     """
     1. DB mein best pattern dhundo
     2. Greeting patterns check karo
