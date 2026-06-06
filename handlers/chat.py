@@ -361,9 +361,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await typing_delay(context, chat.id)
         reply = find_reply(text)
         if reply:
-            await message.reply_text(reply)
+            await message.reply_text(
+                reply,
+                reply_to_message_id=message.message_id
+            )
         else:
-            await message.reply_text(make_girl_reply(text))
+            await message.reply_text(
+                make_girl_reply(text),
+                reply_to_message_id=message.message_id
+            )
         return
 
     # Reply chain mein kabhi kabhi participate karo (15% chance)
@@ -377,7 +383,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = find_reply(text)
         if reply:
             await typing_delay(context, chat.id)
-            await message.reply_text(reply)
+            await message.reply_text(
+                reply,
+                reply_to_message_id=message.message_id
+            )
 
 # ── Smart reply sender ─────────────────────────────────────────────────
 
@@ -385,7 +394,11 @@ async def _send_smart_reply(update, context, text, chat_id):
     message = update.effective_message
     reply   = find_reply(text) or make_girl_reply(text)
     await typing_delay(context, chat_id)
-    await message.reply_text(reply)
+    # Hamesha reply_to_message se reply karo
+    await message.reply_text(
+        reply,
+        reply_to_message_id=message.message_id
+    )
     if should_send_sticker():
         try:
             await context.bot.send_sticker(chat_id, get_sticker("happy"))
