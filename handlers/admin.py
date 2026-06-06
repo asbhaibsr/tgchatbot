@@ -25,8 +25,10 @@ UPI_ID         = "arsadsaifi8272@ibl"
 PREMIUM_PRICE  = 200
 BOT_NAME       = "ᴀꜱ ɢʀᴏᴜᴘ ʙᴏᴛ"
 
-# ── Premium conversation states (in-memory) ───────────────────────────
-_prem_state: dict = {}
+# ── Premium conversation states — now MongoDB-backed (serverless safe) ─
+# BUG FIX: _prem_state was in-memory, lost between Vercel serverless instances.
+# Now using MongoDB via core.db helper functions.
+from core.db import prem_state_get, prem_state_set, prem_state_del, prem_state_exists
 
 # Auto-delete & warn presets
 DEL_PRESETS  = [300, 900, 1800, 3600, 7200, 21600, 43200, 86400]
@@ -679,7 +681,6 @@ async def premium_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"\n\n📌 <b>Aapke Group ki ID:</b> <code>{chat.id}</code>"
     markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("💳 Subscribe", callback_data="prem_start")],
-        [InlineKeyboardButton("⭐ Bot Skills / Features", callback_data="prem_skills")],
         [InlineKeyboardButton(f"📢 Updates", url=f"https://t.me/{UPDATE_CHANNEL.lstrip('@')}")],
     ])
     await update.message.reply_text(text, parse_mode="HTML", reply_markup=markup)
@@ -896,7 +897,6 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         prem = is_premium(chat_id)
         markup = InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Subscribe", callback_data="prem_start")],
-            [InlineKeyboardButton("⭐ Bot Skills / Features", callback_data="prem_skills")],
             [InlineKeyboardButton("✖️ Close", callback_data="close")],
         ])
         await query.edit_message_text(PREM_TEXT, parse_mode="HTML", reply_markup=markup)
@@ -905,7 +905,7 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     elif data == "prem_start":
         if query.message.chat.type != "private":
             return await query.answer("💬 Pehle bot ko PM mein open karo!", show_alert=True)
-        _prem_state[user_id] = {"step": "group_id", "data": {}}
+        prem_state_set(user_id, "group_id", {})
         await query.edit_message_text(
             "📱 <b>Step 1 / 3 — Group ID</b>\n\n"
             "Apne group ka ID bhejo.\n\n"
@@ -991,42 +991,6 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     elif data == "prem_locked":
         await query.answer("👑 Ye Premium feature hai! /premium se activate karo.", show_alert=True)
 
-    # ── Skills / Features showcase ────────────────────────
-    elif data == "prem_skills":
-        skills_text = (
-            "⭐ <b>Bot Skills — Complete List</b>\n\n"
-            "🆓 <b>Free Features (Sab Groups):</b>\n"
-            "• 💬 AI Chatbot — group mein baat karta hai\n"
-            "• 👋 Welcome / Goodbye messages\n"
-            "• 🔞 Bad word detection\n"
-            "• 📊 /info, /id, /rules commands\n"
-            "• 🎭 Shayari, Jokes, Compliments\n"
-            "• 🔥 Roast command\n"
-            "• 🎨 Cursive / Bold font converter\n\n"
-            "👑 <b>Premium Features (₹200/month):</b>\n"
-            "• 🔨 /ban, /unban, /kick users\n"
-            "• 🔇 /mute, /unmute users\n"
-            "• ⚠️ Warn system + auto-ban\n"
-            "• 🔗 Anti-link protection\n"
-            "• ↪️ Anti-forward protection\n"
-            "• ⚡ Flood/spam control\n"
-            "• 🗑️ Auto-delete files (timer)\n"
-            "• 🎬 Movie file caption auto-change\n"
-            "• 🏷️ Tag all active members\n"
-            "• 🔒 Lock stickers / gifs / media / polls\n"
-            "• 👑 Promote / Demote admins\n"
-            "• 🎨 Custom welcome templates\n"
-            "• ⚙️ /settings panel — sab toggle karo\n\n"
-            "📌 <b>Movie File Feature:</b>\n"
-            "Sirf Premium groups mein kaam karta hai.\n"
-            "Group mein file bhejne pe caption auto-change hoti hai!"
-        )
-        markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💳 Subscribe Now", callback_data="prem_start")],
-            [InlineKeyboardButton("🔙 Back", callback_data="prem_info")],
-        ])
-        await query.edit_message_text(skills_text, parse_mode="HTML", reply_markup=markup)
-
     # ── Close ─────────────────────────────────────────────
     elif data == "close":
         try:
@@ -1096,10 +1060,13 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
 async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle premium subscription steps in PM"""
     user_id = update.effective_user.id
-    if user_id not in _prem_state:
+    # BUG FIX: MongoDB se state load karo (serverless-safe)
+    state = prem_state_get(user_id)
+    if state is None:
         return False  # not in conversation
     message = update.effective_message
-    step = _prem_state[user_id]["step"]
+    step = state["step"]
+    state_data = state["data"]
 
     # Step 1: Group ID
     if step == "group_id":
@@ -1112,8 +1079,8 @@ async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode="HTML"
             )
             return True
-        _prem_state[user_id]["data"]["group_id"] = int(text)
-        _prem_state[user_id]["step"] = "utr"
+        state_data["group_id"] = int(text)
+        prem_state_set(user_id, "utr", state_data)
         await message.reply_text(
             f"💳 <b>Step 2 / 3 — UTR / Transaction ID</b>\n\n"
             f"₹{PREMIUM_PRICE} UPI transfer ke baad jo <b>Transaction ID / UTR</b> mila, wo bhejo.\n\n"
@@ -1129,8 +1096,8 @@ async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_
         if len(utr) < 4:
             await message.reply_text("❌ Valid UTR/Transaction ID bhejo!")
             return True
-        _prem_state[user_id]["data"]["utr"] = utr
-        _prem_state[user_id]["step"] = "screenshot"
+        state_data["utr"] = utr
+        prem_state_set(user_id, "screenshot", state_data)
         await message.reply_text(
             "📸 <b>Step 3 / 3 — Screenshot</b>\n\n"
             "Payment ka <b>screenshot</b> bhejo (photo ke roop mein).\n\n"
@@ -1140,6 +1107,8 @@ async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_
         return True
 
     # Step 3: Screenshot
+    # BUG FIX: Ab ye step trigger hoga kyunki api/index.py mein
+    # filters.PHOTO handler add kiya gaya hai
     elif step == "screenshot":
         if not message.photo and not message.document:
             await message.reply_text(
@@ -1150,7 +1119,7 @@ async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode="HTML"
             )
             return True
-        data = _prem_state[user_id]["data"]
+        data = state_data
         if message.photo:
             data["screenshot"] = message.photo[-1].file_id
         else:
@@ -1182,10 +1151,10 @@ async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_
                 f"❌ Owner tak request nahi pauhnchi: {e}\n"
                 f"Please owner se directly contact karo: {OWNER_USERNAME}"
             )
-            del _prem_state[user_id]
+            prem_state_del(user_id)
             return True
 
-        del _prem_state[user_id]
+        prem_state_del(user_id)
         await message.reply_text(
             "✅ <b>Request Submit Ho Gayi!</b>\n\n"
             "Owner jaldi verify karega.\n"
@@ -1199,8 +1168,8 @@ async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_
 
 async def cancel_premium_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    if uid in _prem_state:
-        del _prem_state[uid]
+    if prem_state_exists(uid):
+        prem_state_del(uid)
         await update.message.reply_text("❌ Premium subscription cancel kar diya.")
     else:
         await update.message.reply_text("Koi active process nahi hai.")
