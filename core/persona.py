@@ -146,3 +146,18 @@ COMPLIMENTS = [
 ]
 
 def get_compliment(): return random.choice(COMPLIMENTS)
+
+# ── ROASTS ────────────────────────────────────────────────────────────
+
+ROASTS = [
+    "😂 Bhai teri intelligence aur meri battery ek hi level pe hai — dono low hain! 💀",
+    "🔥 Tu itna slow hai ke tortoise bhi tujhe overtake karke chai pi ke aa gaya! 😂",
+    "💀 Tera WiFi signal aur teri smartness mein kuch zyada farq nahi — dono 1 bar pe hain!",
+    "😂 Tu Google Maps se bhi zyada confuse hai, aur use toh roads pata hain!",
+    "🔥 Teri personality aur plain bread mein ek hi cheez common hai — dono bland hain! 😂",
+    "💀 Tu itna boring hai ke alarm bhi tujhe sunke so jaata hai!",
+    "😂 Teri IQ aur room ka temperature ek hi hai — 0 degree! 🥶",
+    "🔥 Tu joke hai lekin funny nahi — tragic hai! 💀",
+]
+
+def get_roast(): return random.choice(ROASTS)
