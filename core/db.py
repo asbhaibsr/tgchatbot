@@ -290,3 +290,29 @@ def save_active_member(chat_id: int, user_id: int):
 
 def get_active_members(chat_id: int):
     return list(users_col.find({"active_in": chat_id}, {"user_id": 1}))
+
+# ── PREMIUM CONVERSATION STATE (MongoDB-backed, serverless safe) ────────
+# BUG FIX: _prem_state pehle Python dict mein tha jo Vercel serverless pe
+# alag-alag instances ke beech reset ho jaata tha. Ab MongoDB mein store
+# karte hain taaki state har request mein available rahe.
+
+prem_state_col = db["prem_conversation_state"]
+
+def prem_state_get(user_id: int):
+    doc = prem_state_col.find_one({"user_id": user_id})
+    if doc:
+        return {"step": doc["step"], "data": doc.get("data", {})}
+    return None
+
+def prem_state_set(user_id: int, step: str, data: dict):
+    prem_state_col.update_one(
+        {"user_id": user_id},
+        {"$set": {"user_id": user_id, "step": step, "data": data, "updated_at": datetime.now()}},
+        upsert=True
+    )
+
+def prem_state_del(user_id: int):
+    prem_state_col.delete_one({"user_id": user_id})
+
+def prem_state_exists(user_id: int) -> bool:
+    return prem_state_col.find_one({"user_id": user_id}, {"_id": 1}) is not None
