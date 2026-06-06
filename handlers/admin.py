@@ -1,3 +1,7 @@
+"""
+Admin Commands — Ban/Unban/Mute/Kick/Warn/Pin/Purge/Lock + Premium & Settings
+All features from ASGroupBot ported to python-telegram-bot (PTB) framework.
+"""
 import os
 import re
 import asyncio
@@ -257,7 +261,7 @@ async def warn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Warn diya par ban fail: {e}")
     else:
-    bars = "█" * count + "░" * (warn_limit - count)
+        bars = "█" * count + "░" * (warn_limit - count)
         await update.message.reply_text(
             f"⚠️ <b>ᴡᴀʀɴɪɴɢ ᴅɪꜱᴘᴀᴛᴄʜᴇᴅ</b> ⚠️\n\n"
             f"┌ 👤 <b>User:</b> {target.full_name}\n"
@@ -1109,7 +1113,7 @@ async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_
                 "Gallery se screenshot photo ke roop mein bhejo 📸\n"
                 "File ya text nahi — direct photo bhejo.\n\n"
                 "<i>/cancel — cancel karo</i>",
-                parse_mode=\"HTML\"
+                parse_mode="HTML"
             )
             return True
         data = _prem_state[user_id]["data"]
