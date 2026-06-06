@@ -1,7 +1,3 @@
-"""
-Admin Commands — Ban/Unban/Mute/Kick/Warn/Pin/Purge/Lock + Premium & Settings
-All features from ASGroupBot ported to python-telegram-bot (PTB) framework.
-"""
 import os
 import re
 import asyncio
@@ -683,6 +679,7 @@ async def premium_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"\n\n📌 <b>Aapke Group ki ID:</b> <code>{chat.id}</code>"
     markup = InlineKeyboardMarkup([
         [InlineKeyboardButton("💳 Subscribe", callback_data="prem_start")],
+        [InlineKeyboardButton("⭐ Bot Skills / Features", callback_data="prem_skills")],
         [InlineKeyboardButton(f"📢 Updates", url=f"https://t.me/{UPDATE_CHANNEL.lstrip('@')}")],
     ])
     await update.message.reply_text(text, parse_mode="HTML", reply_markup=markup)
@@ -899,6 +896,7 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         prem = is_premium(chat_id)
         markup = InlineKeyboardMarkup([
             [InlineKeyboardButton("💳 Subscribe", callback_data="prem_start")],
+            [InlineKeyboardButton("⭐ Bot Skills / Features", callback_data="prem_skills")],
             [InlineKeyboardButton("✖️ Close", callback_data="close")],
         ])
         await query.edit_message_text(PREM_TEXT, parse_mode="HTML", reply_markup=markup)
@@ -992,6 +990,42 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
     # ── Premium locked notice ─────────────────────────────
     elif data == "prem_locked":
         await query.answer("👑 Ye Premium feature hai! /premium se activate karo.", show_alert=True)
+
+    # ── Skills / Features showcase ────────────────────────
+    elif data == "prem_skills":
+        skills_text = (
+            "⭐ <b>Bot Skills — Complete List</b>\n\n"
+            "🆓 <b>Free Features (Sab Groups):</b>\n"
+            "• 💬 AI Chatbot — group mein baat karta hai\n"
+            "• 👋 Welcome / Goodbye messages\n"
+            "• 🔞 Bad word detection\n"
+            "• 📊 /info, /id, /rules commands\n"
+            "• 🎭 Shayari, Jokes, Compliments\n"
+            "• 🔥 Roast command\n"
+            "• 🎨 Cursive / Bold font converter\n\n"
+            "👑 <b>Premium Features (₹200/month):</b>\n"
+            "• 🔨 /ban, /unban, /kick users\n"
+            "• 🔇 /mute, /unmute users\n"
+            "• ⚠️ Warn system + auto-ban\n"
+            "• 🔗 Anti-link protection\n"
+            "• ↪️ Anti-forward protection\n"
+            "• ⚡ Flood/spam control\n"
+            "• 🗑️ Auto-delete files (timer)\n"
+            "• 🎬 Movie file caption auto-change\n"
+            "• 🏷️ Tag all active members\n"
+            "• 🔒 Lock stickers / gifs / media / polls\n"
+            "• 👑 Promote / Demote admins\n"
+            "• 🎨 Custom welcome templates\n"
+            "• ⚙️ /settings panel — sab toggle karo\n\n"
+            "📌 <b>Movie File Feature:</b>\n"
+            "Sirf Premium groups mein kaam karta hai.\n"
+            "Group mein file bhejne pe caption auto-change hoti hai!"
+        )
+        markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💳 Subscribe Now", callback_data="prem_start")],
+            [InlineKeyboardButton("🔙 Back", callback_data="prem_info")],
+        ])
+        await query.edit_message_text(skills_text, parse_mode="HTML", reply_markup=markup)
 
     # ── Close ─────────────────────────────────────────────
     elif data == "close":
