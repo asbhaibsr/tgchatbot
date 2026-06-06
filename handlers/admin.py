@@ -1,6 +1,3 @@
-# Admin Commands — Ban/Unban/Mute/Kick/Warn/Pin/Purge/Lock + Premium & Settings
-# All features from ASGroupBot ported to python-telegram-bot (PTB) framework.
-
 import os
 import re
 import asyncio
@@ -110,13 +107,15 @@ async def ban_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.ban_chat_member(update.effective_chat.id, target.id)
         await update.message.reply_text(
-            f"🔨 <b>Banned</b>\n"
-            f"👤 User: {target.full_name}\n"
-            f"🆔 ID: <code>{target.id}</code>\n"
-            f"📝 Reason: {reason}",
+            f"🔨 <b>ʙᴀɴ ʜᴀᴍᴍᴇʀ ᴅʀᴏᴘᴘᴇᴅ</b> 🔨\n\n"
+            f"┌ 👤 <b>{target.full_name}</b>\n"
+            f"├ 🆔 <code>{target.id}</code>\n"
+            f"├ 📝 {reason}\n"
+            f"└ 🚫 <b>Status: BANNED</b>\n\n"
+            f"━━━━━━━━━━━━━━━━",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("✅ Unban", callback_data=f"unban_{target.id}")
+                InlineKeyboardButton("✅ Unban karo", callback_data=f"unban_{target.id}")
             ]])
         )
     except Exception as e:
@@ -161,13 +160,16 @@ async def mute_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             until_date=until
         )
         await update.message.reply_text(
-            f"🔇 <b>Muted</b>\n"
-            f"👤 User: {target.full_name}\n"
-            f"⏱ Duration: {dur_text}\n"
-            f"📝 Reason: {reason}",
+            f"🔇 <b>ᴍᴜᴛᴇ ᴀᴘᴘʟɪᴇᴅ</b> 🔇\n\n"
+            f"┌ 👤 <b>{target.full_name}</b>\n"
+            f"├ 🆔 <code>{target.id}</code>\n"
+            f"├ ⏱ <b>Duration:</b> {dur_text}\n"
+            f"├ 📝 {reason}\n"
+            f"└ 🔕 <b>Status: MUTED</b>\n\n"
+            f"━━━━━━━━━━━━━━━━",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔊 Unmute", callback_data=f"unmute_{target.id}")
+                InlineKeyboardButton("🔊 Unmute karo", callback_data=f"unmute_{target.id}")
             ]])
         )
     except Exception as e:
@@ -212,9 +214,12 @@ async def kick_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.ban_chat_member(update.effective_chat.id, target.id)
         await context.bot.unban_chat_member(update.effective_chat.id, target.id)
         await update.message.reply_text(
-            f"👟 <b>Kicked</b>\n"
-            f"👤 User: {target.full_name}\n"
-            f"📝 Reason: {reason}",
+            f"👟 <b>ᴋɪᴄᴋᴇᴅ ᴏᴜᴛ</b> 👟\n\n"
+            f"┌ 👤 <b>{target.full_name}</b>\n"
+            f"├ 🆔 <code>{target.id}</code>\n"
+            f"└ 📝 {reason}\n\n"
+            f"💨 Bahar kar diya~\n"
+            f"━━━━━━━━━━━━━━━━",
             parse_mode="HTML"
         )
     except Exception as e:
@@ -241,21 +246,33 @@ async def warn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.ban_chat_member(chat_id, target.id)
             reset_warns(chat_id, target.id)
             await update.message.reply_text(
-                f"⚠️ <b>Auto-Banned!</b>\n"
-                f"👤 {target.full_name} ko {count}/{warn_limit} warnings mil gayi!\n"
-                f"🚫 Auto-ban ho gaya!",
+                f"💀 <b>ᴀᴜᴛᴏ-ʙᴀɴ ᴀᴄᴛɪᴠᴀᴛᴇᴅ</b> 💀\n\n"
+                f"┌ 👤 {target.full_name}\n"
+                f"├ ⚠️ Warns: {count}/{warn_limit}\n"
+                f"└ 🔨 Status: <b>BANNED</b>\n\n"
+                f"🚫 Limit cross kar di inhone~\n"
+                f"━━━━━━━━━━━━━━━━",
                 parse_mode="HTML"
             )
         except Exception as e:
             await update.message.reply_text(f"Warn diya par ban fail: {e}")
     else:
+    bars = "█" * count + "░" * (warn_limit - count)
         await update.message.reply_text(
-            f"⚠️ Warning {count}/{warn_limit} — {target.full_name}\n"
-            f"📝 Reason: {reason}\n"
-            f"3 warnings pe auto-ban hoga!",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Reset Warns", callback_data=f"resetwarn_{target.id}")
-            ]])
+            f"⚠️ <b>ᴡᴀʀɴɪɴɢ ᴅɪꜱᴘᴀᴛᴄʜᴇᴅ</b> ⚠️\n\n"
+            f"┌ 👤 <b>User:</b> {target.full_name}\n"
+            f"├ 📝 <b>Reason:</b> {reason}\n"
+            f"├ ⚡ <b>Warns:</b> [{bars}] {count}/{warn_limit}\n"
+            f"└ 💀 <b>Auto-ban:</b> {warn_limit} pe hoga\n\n"
+            f"{'🚨 <b>Danger Zone!</b> Ek aur aur ban~' if count >= warn_limit - 1 else '⚠️ Sambhalo apne aap ko~'}",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🔄 Reset", callback_data=f"resetwarn_{target.id}"),
+                    InlineKeyboardButton("🔇 Mute", callback_data=f"rep_mute_{target.id}"),
+                    InlineKeyboardButton("🔨 Ban", callback_data=f"rep_ban_{target.id}"),
+                ]
+            ])
         )
 
 async def warns_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -751,33 +768,44 @@ async def _build_settings_panel(chat_id: int, chat_title: str, prem: bool):
         return InlineKeyboardButton(f"{icon}{sc(label)}", callback_data=cb)
 
     keyboard = [
+        # Row 1: Welcome | Goodbye
         [
-            InlineKeyboardButton(f"{_icon(welcome)} {sc('welcome')}",  callback_data="tog_welcome"),
-            InlineKeyboardButton(f"{_icon(goodbye)} {sc('goodbye')}",  callback_data="tog_goodbye"),
-            InlineKeyboardButton(f"{_icon(chatbot)} {sc('chat bot')}", callback_data="tog_chatbot"),
+            InlineKeyboardButton(f"{_icon(welcome)} ᴡᴇʟᴄᴏᴍᴇ", callback_data="tog_welcome"),
+            InlineKeyboardButton(f"{_icon(goodbye)} ɢᴏᴏᴅʙʏᴇ", callback_data="tog_goodbye"),
         ],
+        # Row 2: Chatbot (free)
         [
-            prow("anti-link",  "tog_antilink",  antilink),
-            prow("anti-fwd",   "tog_antifwd",   antifwd),
-            prow("anti-spam",  "tog_antispam",  antispam),
+            InlineKeyboardButton(f"{_icon(chatbot)} ᴄʜᴀᴛ ʙᴏᴛ", callback_data="tog_chatbot"),
         ],
+        # Row 3: Anti-link | Anti-fwd (premium)
         [
-            prow("flood",    "tog_flood",   flood),
+            prow("anti-link", "tog_antilink", antilink),
+            prow("anti-fwd",  "tog_antifwd",  antifwd),
+        ],
+        # Row 4: Anti-spam | Flood (premium)
+        [
+            prow("anti-spam", "tog_antispam", antispam),
+            prow("flood",     "tog_flood",    flood),
+        ],
+        # Row 5: Auto-del | Warn limit (premium)
+        [
             prow("auto-del", "tog_autodel", autodel),
-        ],
-        [
             InlineKeyboardButton(
-                ("🔒 " if not prem else f"⏱ ᴅᴇʟ: {fmt_time(del_time)}"),
-                callback_data="cycle_deltime" if prem else "prem_locked"
-            ),
-            InlineKeyboardButton(
-                ("🔒 " if not prem else f"⚠️ ᴡᴀʀɴ: {warn_lim}"),
+                ("🔒 ᴡᴀʀɴ" if not prem else f"⚠️ ᴡᴀʀɴ: {warn_lim}"),
                 callback_data="cycle_warnlim" if prem else "prem_locked"
             ),
         ],
+        # Row 6: Del timer (premium)
         [
-            InlineKeyboardButton(f"🔄 {sc('refresh')}", callback_data="settings_refresh"),
-            InlineKeyboardButton(f"✖️ {sc('close')}",   callback_data="close"),
+            InlineKeyboardButton(
+                ("🔒 ᴀᴜᴛᴏ ᴅᴇʟ ᴛɪᴍᴇ" if not prem else f"⏱ ᴅᴇʟ ᴛɪᴍᴇ: {fmt_time(del_time)}"),
+                callback_data="cycle_deltime" if prem else "prem_locked"
+            ),
+        ],
+        # Row 7: Refresh | Close
+        [
+            InlineKeyboardButton(f"🔄 ʀᴇꜰʀᴇꜱʜ", callback_data="settings_refresh"),
+            InlineKeyboardButton(f"✖️ ᴄʟᴏꜱᴇ",   callback_data="close"),
         ],
     ]
     if not prem:
@@ -1075,14 +1103,20 @@ async def pm_premium_conversation(update: Update, context: ContextTypes.DEFAULT_
 
     # Step 3: Screenshot
     elif step == "screenshot":
-        if not message.photo:
+        if not message.photo and not message.document:
             await message.reply_text(
-                "❌ Photo (screenshot) chahiye!\n"
-                "Text nahi — actual screenshot bhejo."
+                "❌ Screenshot chahiye!\n\n"
+                "Gallery se screenshot photo ke roop mein bhejo 📸\n"
+                "File ya text nahi — direct photo bhejo.\n\n"
+                "<i>/cancel — cancel karo</i>",
+                parse_mode=\"HTML\"
             )
             return True
         data = _prem_state[user_id]["data"]
-        data["screenshot"] = message.photo[-1].file_id
+        if message.photo:
+            data["screenshot"] = message.photo[-1].file_id
+        else:
+            data["screenshot"] = message.document.file_id
         req_doc = save_prem_request(user_id, data["group_id"], data["utr"], data["screenshot"])
         markup = InlineKeyboardMarkup([
             [
