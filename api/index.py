@@ -121,6 +121,14 @@ def get_bot_app():
         movie_file_handler
     ))
 
+    # ── PHOTO handler — PM mein premium subscription ka screenshot ────
+    # BUG FIX: Pehle koi PHOTO handler nahi tha, isliye Step 3 mein
+    # screenshot bhejne par bot respond nahi karta tha.
+    application.add_handler(MessageHandler(
+        filters.PHOTO & filters.ChatType.PRIVATE,
+        message_handler
+    ))
+
     # ── Text message handler (LAST — chatbot) ─────────────────────────
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
