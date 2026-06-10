@@ -33,6 +33,7 @@ scheduled_col    = db["scheduled_msgs"]
 context_col      = db["chat_context"]
 bot_reply_col    = db["bot_reply_history"]
 tagall_col       = db["tagall_jobs"]
+filters_col      = db["filters"]
 
 _flood: dict = {}
 
@@ -407,3 +408,57 @@ def get_recent_messages(chat_id: int, limit: int = 20) -> list:
         .sort("at", DESCENDING)
         .limit(limit)
     )
+
+# ════════ FILTERS ════════
+def save_filter(chat_id: int, keyword: str, response: dict):
+    """Save a filter response. Multiple responses per keyword supported."""
+    keyword = keyword.lower().strip()[:100]
+    filters_col.update_one(
+        {"chat_id": chat_id, "keyword": keyword},
+        {
+            "$push": {"responses": response},
+            "$set": {"updated_at": datetime.now()},
+            "$setOnInsert": {
+                "chat_id": chat_id,
+                "keyword": keyword,
+                "created_at": datetime.now(),
+            },
+        },
+        upsert=True,
+    )
+
+def get_filter(chat_id: int, keyword: str):
+    keyword = keyword.lower().strip()
+    return filters_col.find_one({"chat_id": chat_id, "keyword": keyword})
+
+def get_all_filters(chat_id: int) -> list:
+    return list(filters_col.find({"chat_id": chat_id}).sort("keyword", 1))
+
+def delete_filter(chat_id: int, keyword: str) -> bool:
+    keyword = keyword.lower().strip()
+    result = filters_col.delete_one({"chat_id": chat_id, "keyword": keyword})
+    return result.deleted_count > 0
+
+def delete_all_filters(chat_id: int) -> int:
+    result = filters_col.delete_many({"chat_id": chat_id})
+    return result.deleted_count
+
+def find_matching_filter(chat_id: int, text: str):
+    """Find first filter whose keyword appears in the message text."""
+    import re as _re
+    if not text:
+        return None
+    text_lower = text.lower()
+    all_f = list(filters_col.find({"chat_id": chat_id}, {"keyword": 1, "responses": 1}))
+    # Word-boundary match
+    for f in all_f:
+        kw = f.get("keyword", "")
+        if not kw:
+            continue
+        try:
+            if _re.search(r"(?<!\w)" + _re.escape(kw) + r"(?!\w)", text_lower):
+                return f
+        except Exception:
+            if kw in text_lower:
+                return f
+    return None
