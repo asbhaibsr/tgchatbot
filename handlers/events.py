@@ -1,71 +1,86 @@
-# Event Handlers — Welcome/Goodbye, Bot Add/Remove, Callbacks (help/about/settings/premium)
-
 import os
 import asyncio
 import random
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
 from telegram.ext import ContextTypes
-from telegram.constants import ChatAction
 
-from core.db import save_user, save_group, remove_group, get_setting
-from core.persona import BOT_NAME
+from core.db import (
+    save_user, save_group, remove_group,
+    get_setting, is_premium,
+    set_captcha, get_captcha, del_captcha,
+    record_raid_join, detect_raid,
+)
+from core.persona import BOT_NAME, get_welcome, get_goodbye
 
-ADMIN_ID      = int(os.environ.get("ADMIN_ID", "0"))
-LOG_CHANNEL   = os.environ.get("LOG_CHANNEL_ID", "")
+ADMIN_ID       = int(os.environ.get("ADMIN_ID", "0"))
+LOG_CHANNEL    = os.environ.get("LOG_CHANNEL_ID", "")
 OWNER_USERNAME = "@asbhaibsr"
 UPDATE_CHANNEL = "@asbhai_bsr"
 
-async def send_log(context, text):
+
+# ══════════════════════════════════════════════════════════
+# LOG HELPER
+# ══════════════════════════════════════════════════════════
+
+async def send_log(context, text: str):
     if LOG_CHANNEL:
         try:
             await context.bot.send_message(
-                chat_id=LOG_CHANNEL,
-                text=text,
-                parse_mode="HTML",
-                disable_web_page_preview=True
+                chat_id=int(LOG_CHANNEL), text=text,
+                parse_mode="HTML", disable_web_page_preview=True,
             )
         except Exception:
             pass
 
-# ── /start ────────────────────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════
+# /start  (handles /start premium parameter too)
+# ══════════════════════════════════════════════════════════
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     save_user(user)
 
-    username_link = f"@{user.username}" if user.username else f'<a href="tg://user?id={user.id}">{user.full_name}</a>'
+    # ── /start premium → begin subscription flow ──────────
+    if context.args and context.args[0].lower() in ("premium", "subscribe"):
+        from handlers.admin import prem_start_handler
+        return await prem_start_handler(update, context)
+
+    username_link = (
+        f"@{user.username}" if user.username
+        else f'<a href="tg://user?id={user.id}">{user.full_name}</a>'
+    )
     await send_log(
         context,
-        f"👤 <b>New User Started Bot</b>\n"
-        f"┌ Name: {user.full_name}\n"
-        f"├ ID: <code>{user.id}</code>\n"
-        f"└ Link: {username_link}"
+        f"👤 <b>New User</b>\n"
+        f"┌ {user.full_name}\n"
+        f"├ <code>{user.id}</code>\n"
+        f"└ {username_link}",
     )
 
     me = await context.bot.get_me()
     markup = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📖 ʜᴇʟᴘ", callback_data="help_main"),
-            InlineKeyboardButton("ℹ️ ᴀʙᴏᴜᴛ", callback_data="about"),
+            InlineKeyboardButton("📖 Help",  callback_data="help_main"),
+            InlineKeyboardButton("ℹ️ About", callback_data="about"),
         ],
-        [InlineKeyboardButton("👑 ɢᴇᴛ ᴘʀᴇᴍɪᴜᴍ", callback_data="prem_info")],
-        [InlineKeyboardButton("📢 ᴜᴘᴅᴀᴛᴇꜱ", url=f"https://t.me/{UPDATE_CHANNEL.lstrip('@')}")],
+        [InlineKeyboardButton("👑 Get Premium",      callback_data="prem_info")],
+        [InlineKeyboardButton("📢 Updates Channel",  url=f"https://t.me/{UPDATE_CHANNEL.lstrip('@')}")],
+        [InlineKeyboardButton("➕ Add to Group",
+                              url=f"https://t.me/{me.username}?startgroup=start")],
     ])
+
     if update.effective_chat.type == "private":
         await update.message.reply_text(
             f"<b>Heyy {user.first_name}! 🌸</b>\n\n"
-            f"Main hoon <b>{BOT_NAME}</b> — tumhara powerful Telegram group manager!\n\n"
-            "🛡 <b>Features:</b>\n"
-            "• Full moderation — ban, mute, kick, warn\n"
-            "• Anti-spam, anti-link, flood control\n"
-            "• Custom welcome & goodbye\n"
-            "• Premium subscription system\n"
-            "• Pattern-based self-learning chat bot\n"
-            "• Movie file copyright protection\n\n"
-            "👇 Group mein add karo aur /settings se sab set karo!",
+            f"Main hoon <b>{BOT_NAME}</b>~\n"
+            "Tera powerful Telegram group manager!\n\n"
+            "🆓 <b>Free:</b> Anti-Gaali • Notes • AI Chatbot • Warn/Ban/Mute\n"
+            "👑 <b>Premium:</b> Anti-Link • Anti-Raid • Movie System • Captcha • Analytics\n\n"
+            "👇 Group mein add karo aur /settings se configure karo!",
             parse_mode="HTML",
-            reply_markup=markup
+            reply_markup=markup,
         )
     else:
         await update.message.reply_text(
@@ -74,18 +89,23 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    "💬 ᴘᴍ ꜰᴏʀ ʜᴇʟᴘ",
-                    url=f"https://t.me/{me.username}?start=help"
+                    "💬 PM for help",
+                    url=f"https://t.me/{me.username}?start=help",
                 )
-            ]])
+            ]]),
         )
 
-# ── Bot group mein add hua / nikala ───────────────────────────────────
+
+# ══════════════════════════════════════════════════════════
+# BOT ADD / REMOVE (called by ChatMemberHandler)
+# ══════════════════════════════════════════════════════════
 
 async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = update.my_chat_member
-    chat   = result.chat
-    new    = result.new_chat_member
+    if not result:
+        return
+    chat = result.chat
+    new  = result.new_chat_member
 
     if new.status in ("member", "administrator"):
         save_group(chat)
@@ -95,58 +115,146 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
             link = "N/A"
         await send_log(
             context,
-            f"🟢 <b>Bot Added to Group</b>\n"
-            f"┌ Group: {chat.title}\n"
-            f"├ ID: <code>{chat.id}</code>\n"
-            f"└ Link: {link}"
+            f"🟢 <b>Bot Added</b>\n┌ {chat.title}\n├ <code>{chat.id}</code>\n└ {link}",
         )
-        await context.bot.send_message(
-            chat_id=chat.id,
-            text=(
-                f"<b>Heyy sab! Main hoon {BOT_NAME} 🌸</b>\n\n"
-                "Group management ke liye ready hoon!\n\n"
-                "👮 Admin /settings karo sab configure karne ke liye.\n"
-                "👑 Premium features ke liye /premium dekhna."
-            ),
-            parse_mode="HTML"
-        )
+        me = await context.bot.get_me()
+        try:
+            await context.bot.send_message(
+                chat_id=chat.id,
+                text=(
+                    f"<b>Heyy sab! Main hoon {BOT_NAME} 🌸</b>\n\n"
+                    "Ab is group ka protection mere haath mein hai!\n\n"
+                    "🔧 Setup:\n"
+                    "• /settings → sab features toggle karo\n"
+                    "• /setwelcome → custom welcome\n"
+                    "• /setrules → group rules\n"
+                    "• /help → poori commands list\n"
+                    "• /premium → premium features\n\n"
+                    "<i>Note: Bot ko admin banao taaki sab features kaam karein!</i>"
+                ),
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("⚙️ Settings", callback_data="settings_open"),
+                    InlineKeyboardButton("📖 Help",     callback_data="help_main"),
+                ]]),
+            )
+        except Exception:
+            pass
+
     elif new.status in ("left", "kicked", "banned"):
         remove_group(chat.id)
         await send_log(
             context,
-            f"🔴 <b>Bot Removed from Group</b>\n"
-            f"┌ Group: {chat.title}\n"
-            f"└ ID: <code>{chat.id}</code>"
+            f"🔴 <b>Bot Removed</b>\n┌ {chat.title}\n└ <code>{chat.id}</code>",
         )
 
-# ── Naya member group mein aaya ───────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════
+# NEW MEMBER (welcome + captcha + anti-raid)
+# ══════════════════════════════════════════════════════════
 
 async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat    = update.effective_chat
     message = update.effective_message
-
-    if not get_setting(chat.id, "welcome_on", True):
-        return
 
     for member in message.new_chat_members:
         if member.is_bot:
             continue
         save_user(member)
 
-        custom_msg = get_setting(chat.id, "welcome_msg", None)
-        if custom_msg:
-            text = custom_msg.replace("{name}", member.full_name)
-            text = text.replace("{group}", chat.title or "")
-        else:
-            text = (
-                f"<b>Heyy {member.full_name}! 🌸</b>\n\n"
-                f"Welcome to <b>{chat.title}</b>!\n"
-                "Enjoy karo aur rules follow karo~ 💘\n"
-                "/rules se group rules dekho."
-            )
-        await message.reply_text(text, parse_mode="HTML")
+        # Anti-Raid (PREMIUM)
+        if is_premium(chat.id) and get_setting(chat.id, "antiraid_on", False):
+            record_raid_join(chat.id, member.id)
+            if detect_raid(chat.id, window_sec=30, threshold=5):
+                try:
+                    await context.bot.set_chat_permissions(
+                        chat.id, permissions=ChatPermissions(can_send_messages=False),
+                    )
+                except Exception:
+                    pass
+                await message.reply_text(
+                    "🚨 <b>RAID DETECTED!</b>\n\n"
+                    "5+ users joined in 30 seconds!\n"
+                    "Group temporarily <b>LOCKED</b> 🔒\n\n"
+                    "Admins — /unlock_raid type karo jab safe ho!",
+                    parse_mode="HTML",
+                )
+                await send_log(
+                    context,
+                    f"🚨 <b>RAID ALERT</b>\n"
+                    f"Group: {chat.title} (<code>{chat.id}</code>)",
+                )
+                return
 
-# ── Member group se gaya ──────────────────────────────────────────────
+        # Captcha (PREMIUM)
+        if is_premium(chat.id) and get_setting(chat.id, "captcha_on", False):
+            try:
+                await context.bot.restrict_chat_member(
+                    chat.id, member.id,
+                    permissions=ChatPermissions(can_send_messages=False),
+                )
+            except Exception:
+                pass
+            a, b   = random.randint(1, 9), random.randint(1, 9)
+            answer = str(a + b)
+            wrong  = set()
+            while len(wrong) < 3:
+                w = str(random.randint(2, 18))
+                if w != answer:
+                    wrong.add(w)
+            opts = [answer] + list(wrong)
+            random.shuffle(opts)
+            markup = InlineKeyboardMarkup([[
+                InlineKeyboardButton(o, callback_data=f"captcha_{member.id}_{o}")
+                for o in opts
+            ]])
+            sent = await message.reply_text(
+                f"👋 {member.mention_html()} — welcome!\n\n"
+                f"🤖 <b>Prove karo tum bot nahi ho:</b>\n\n"
+                f"<b>{a} + {b} = ?</b>\n\n"
+                f"⏳ 2 min mein jawab do, warna <b>kick!</b>",
+                parse_mode="HTML", reply_markup=markup,
+            )
+            set_captcha(chat.id, member.id, answer, sent.message_id)
+
+            async def _auto_kick(cid, uid, mid):
+                await asyncio.sleep(120)
+                if get_captcha(cid, uid):
+                    del_captcha(cid, uid)
+                    try:
+                        await context.bot.ban_chat_member(cid, uid)
+                        await asyncio.sleep(1)
+                        await context.bot.unban_chat_member(cid, uid)
+                    except Exception:
+                        pass
+                    try:
+                        await context.bot.delete_message(cid, mid)
+                    except Exception:
+                        pass
+
+            asyncio.create_task(_auto_kick(chat.id, member.id, sent.message_id))
+            continue
+
+        # Welcome
+        if not get_setting(chat.id, "welcome_on", True):
+            continue
+        custom = get_setting(chat.id, "welcome_msg", None)
+        text   = (
+            custom
+            .replace("{name}", member.mention_html())
+            .replace("{group}", chat.title or "")
+            if custom else get_welcome(member.mention_html())
+        )
+        rules  = get_setting(chat.id, "rules", None)
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📋 Group Rules", callback_data="show_rules")
+        ]]) if rules else None
+        await message.reply_text(text, parse_mode="HTML", reply_markup=markup)
+
+
+# ══════════════════════════════════════════════════════════
+# LEFT MEMBER
+# ══════════════════════════════════════════════════════════
 
 async def left_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
@@ -155,45 +263,83 @@ async def left_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     if not get_setting(update.effective_chat.id, "goodbye_on", True):
         return
-    custom_msg = get_setting(update.effective_chat.id, "goodbye_msg", None)
-    if custom_msg:
-        text = custom_msg.replace("{name}", member.full_name)
-    else:
-        text = f"<b>{member.full_name} chale gaye!</b> 👋\nMiss karenge~"
+    custom = get_setting(update.effective_chat.id, "goodbye_msg", None)
+    text   = (
+        custom.replace("{name}", member.full_name)
+        if custom else get_goodbye(member.full_name)
+    )
     await message.reply_text(text, parse_mode="HTML")
 
-# ── Master callback handler ────────────────────────────────────────────
+
+# ══════════════════════════════════════════════════════════
+# UNLOCK RAID
+# ══════════════════════════════════════════════════════════
+
+async def unlock_raid_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    user = update.effective_user
+    from handlers.admin import _is_user_admin
+    if not await _is_user_admin(context, chat.id, user.id):
+        await update.effective_message.reply_text("❌ Sirf admins!")
+        return
+    try:
+        await context.bot.set_chat_permissions(
+            chat.id,
+            permissions=ChatPermissions(
+                can_send_messages=True, can_send_media_messages=True,
+                can_send_other_messages=True, can_add_web_page_previews=True,
+            ),
+        )
+        from core.db import clear_raid_log
+        clear_raid_log(chat.id)
+        await update.effective_message.reply_text("✅ Group unlock! Raid log clear. 🌸")
+    except Exception as e:
+        await update.effective_message.reply_text(f"❌ {e}")
+
+
+# ══════════════════════════════════════════════════════════
+# MASTER CALLBACK ROUTER
+# ALL button callbacks route here first
+# ══════════════════════════════════════════════════════════
+
+# Prefixes that go to admin_callback_handler
+_ADMIN_PREFIXES = (
+    "unban_", "unmute_", "resetwarn_",
+    "prem_a_", "prem_r_",
+    "tog_", "cycle_",
+    "settings_",
+    "rep_", "locktype_",
+    "tagall_stop_",    # ← FIX: tagall stop button
+    "tagall_resume_",  # ← FIX: tagall resume button
+)
+
+_ADMIN_EXACT = {
+    "prem_locked", "prem_info", "prem_start",
+    "close", "settings_main",
+    "settings_flood", "settings_autodel",
+    "settings_warn", "settings_locks",
+}
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data  = query.data
 
-    # Route to admin callbacks first (settings, premium, unban, etc.)
-    admin_cb_data = (
-        "unban_", "unmute_", "resetwarn_",
-        "prem_", "tog_", "cycle_", "settings_", "prem_locked",
-        "close", "rep_warn_", "rep_mute_", "rep_ban_"
-    )
-    admin_prefixes = (
-        "unban_", "unmute_", "resetwarn_",
-        "prem_", "tog_", "cycle_", "settings_",
-        "rep_"
-    )
-    admin_exact = ("prem_locked", "close", "prem_info", "prem_start")
+    # Captcha buttons
+    if data.startswith("captcha_"):
+        from handlers.chat import captcha_callback_handler
+        return await captcha_callback_handler(update, context)
 
-    is_admin_cb = data in admin_exact or any(data.startswith(p) for p in admin_prefixes)
-
-    if is_admin_cb:
+    # Admin callbacks
+    if data in _ADMIN_EXACT or any(data.startswith(p) for p in _ADMIN_PREFIXES):
         from handlers.admin import admin_callback_handler
         return await admin_callback_handler(update, context)
 
-    # User callbacks
-    user_cb = ("help_main", "help_admin", "help_user")
-    if data in user_cb:
+    # Help / user callbacks
+    if data in ("help_main", "help_admin", "help_user"):
         from handlers.user import user_callback_handler
         return await user_callback_handler(update, context)
 
-    # about
+    # About
     if data == "about":
         await query.answer()
         markup = InlineKeyboardMarkup([
@@ -201,17 +347,37 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("📢 Channel", url=f"https://t.me/{UPDATE_CHANNEL.lstrip('@')}"),
                 InlineKeyboardButton("👤 Owner",   url=f"https://t.me/{OWNER_USERNAME.lstrip('@')}"),
             ],
-            [InlineKeyboardButton("« ʙᴀᴄᴋ", callback_data="help_main")],
+            [InlineKeyboardButton("« Back", callback_data="help_main")],
         ])
-        from core.persona import BOT_NAME
-        await query.edit_message_text(
-            f"🤖 <b>{BOT_NAME}</b>\n\n"
-            "Powerful Telegram Group Manager 🌸\n\n"
-            f"👨‍💻 Owner: {OWNER_USERNAME}\n"
-            f"📢 Channel: {UPDATE_CHANNEL}",
-            parse_mode="HTML",
-            reply_markup=markup
-        )
+        try:
+            await query.edit_message_text(
+                f"🤖 <b>{BOT_NAME}</b>\n\n"
+                "Advanced Telegram Group Manager 🌸\n\n"
+                f"👨‍💻 Owner: {OWNER_USERNAME}\n"
+                f"📢 Channel: {UPDATE_CHANNEL}\n\n"
+                "Anti-Gaali • Anti-Raid • Movie System\n"
+                "Notes • Analytics • Captcha • Smart AI 💘",
+                parse_mode="HTML", reply_markup=markup,
+            )
+        except Exception:
+            pass
         return
+
+    # Show rules
+    if data == "show_rules":
+        await query.answer()
+        rules = get_setting(query.message.chat.id, "rules", None)
+        if rules:
+            await query.message.reply_text(
+                f"📋 <b>Group Rules:</b>\n\n{rules}", parse_mode="HTML"
+            )
+        else:
+            await query.answer("Rules abhi set nahi hain!", show_alert=True)
+        return
+
+    # Settings open (from bot-added message)
+    if data == "settings_open":
+        from handlers.admin import settings_handler
+        return await settings_handler(update, context)
 
     await query.answer()
