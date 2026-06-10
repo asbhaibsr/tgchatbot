@@ -1,163 +1,135 @@
 import random
 
-BOT_NAME = "⎯᪵⎯꯭̽💘꯭᪳ ⃪𝗖𝘂꯭𝘁𝗶𝗲꯭ 𝗣𝗶꯭𝗲 ⃪🌸͎᪳᪳𝆺꯭𝅥⎯꯭̽⎯꯭"
-BOT_TRIGGERS = ["cutie", "cutie pie", "pie", "hey bot", "aye bot", "bot", "cutiepie"]
+BOT_NAME       = "ᴀꜱ ɢʀᴏᴜᴘ ʙᴏᴛ"
+OWNER_USERNAME = "@asbhaibsr"
+UPDATE_CHANNEL = "@asbhai_bsr"
 
-# ── STICKER IDs ────────────────────────────────────────────────────────
-STICKERS = {
-    "happy":    ["CAACAgIAAxkBAAIBhWXv", "CAACAgIAAxkBAAIBhWXw"],
-    "angry":    ["CAACAgIAAxkBAAIBhWXa", "CAACAgIAAxkBAAIBhWXb"],
-    "shy":      ["CAACAgIAAxkBAAIBhWXc", "CAACAgIAAxkBAAIBhWXd"],
-    "lol":      ["CAACAgIAAxkBAAIBhWXe", "CAACAgIAAxkBAAIBhWXf"],
-    "love":     ["CAACAgIAAxkBAAIBhWXg", "CAACAgIAAxkBAAIBhWXh"],
-    "confused": ["CAACAgIAAxkBAAIBhWXi", "CAACAgIAAxkBAAIBhWXj"],
+# ════════════════════════════════════════════════════════
+# BOT TRIGGER KEYWORDS
+# When any of these appear in a message, bot will reply
+# ════════════════════════════════════════════════════════
+
+BOT_TRIGGERS = [
+    # Bot names / nicknames
+    "cutie", "cutie pie", "cutiepie",
+    "bot", "robot", "robo",
+    "as bot", "as group bot",
+
+    # Direct address (Hinglish)
+    "hey bot", "hi bot", "hello bot",
+    "oye bot", "aye bot", "sun bot",
+    "bhai bot", "yaar bot",
+
+    # Attention words
+    "suno", "sun", "batao", "bolo",
+    "bol", "kya lagta", "kya sochti",
+    "kya hai", "help me", "help karo",
+
+    # Common Indian attention words
+    "arre", "yaar", "dost",
+]
+
+# ════════════════════════════════════════════════════════
+# STICKER IDs
+# Replace these with actual sticker file_ids from your bot
+# ════════════════════════════════════════════════════════
+
+_STICKERS = {
+    "happy": [
+        "CAACAgIAAxkBAAIBB2YAAhappysticker1",   # replace with real IDs
+        "CAACAgIAAxkBAAIBB2YAAhappysticker2",
+    ],
+    "sad": [
+        "CAACAgIAAxkBAAIBB2YAAasadsticker1",
+        "CAACAgIAAxkBAAIBB2YAAasadsticker2",
+    ],
+    "angry": [
+        "CAACAgIAAxkBAAIBB2YAAaangrysticker1",
+    ],
+    "love": [
+        "CAACAgIAAxkBAAIBB2YAAalovesticker1",
+        "CAACAgIAAxkBAAIBB2YAAalovesticker2",
+    ],
+    "laugh": [
+        "CAACAgIAAxkBAAIBB2YAAlaughsticker1",
+    ],
+    "default": [
+        "CAACAgIAAxkBAAIBB2YAAdefaultsticker1",
+        "CAACAgIAAxkBAAIBB2YAAdefaultsticker2",
+    ],
 }
 
-def get_sticker(mood="happy"):
-    return random.choice(STICKERS.get(mood, STICKERS["happy"]))
+def get_sticker(mood: str = "default") -> str:
+    """Return a random sticker file_id for given mood"""
+    options = _STICKERS.get(mood, _STICKERS["default"])
+    return random.choice(options)
 
-def should_send_sticker():
-    return random.random() < 0.10
+def should_send_sticker() -> bool:
+    """15% chance bot sends a sticker after replying"""
+    return random.random() < 0.15
 
-# ── WELCOME ────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════
+# WELCOME MESSAGES
+# ════════════════════════════════════════════════════════
 
-WELCOME_MSGS = [
-    "✨ 𝑾𝒆𝒍𝒄𝒐𝒎𝒆 𝒕𝒐 𝒕𝒉𝒆 𝑮𝒓𝒐𝒖𝒑 ✨\n\n💐 Heyy {name}~! Aa gaye aakhir! 🌸\nMaza aayega yahan, enjoy karo! 💘\n\n⁀➷ Rules follow karo → /rules",
-    "🎊 {name} aagaye hamare group mein!\n\n🌸 Welcome welcome~! Bahut khushi hui! 💘\nAbhi se aap hamare family member ho~ ✨",
-    "🌺 Aww heyy {name}~! 💘\nFinally aa gaye! Hum toh wait kar rahe the~ 🌸\n\nEnjoy your stay! → /help",
-    "💫 ᴡᴇʟᴄᴏᴍᴇ {name}!\n🌸 Khush amdeed~\n💘 Ab group mein jaan aa gayi!",
+_WELCOME_MSGS = [
+    "🌸 {mention} aa gaya/gayi! Welcome to the family~ 💘\nRules follow karo aur maza karo! 🎉",
+    "✨ Heyy {mention}! Welcome welcome~ 🌸\nAb group aur bhi acha lag raha hai! 💘",
+    "🎉 {mention} ka swagat hai! 🌸\nSaath mein bahut maza aayega~ 💘",
+    "💫 {mention} join kar liya! Yayy~ 🎊\nGroup rules zaroor padho! 🌸",
+    "🌺 Areyy {mention} aa gaya/gayi! 😄💘\nWelcome to our lovely group~ 🌸",
+    "🎀 {mention} welcome!! 🌸\nAb poori team complete ho gayi~ 💘",
+    "⭐ {mention} join ho gaye! 🎉\nRules follow karna mat bhulna~ 🌸",
 ]
 
-GOODBYE_MSGS = [
-    "💔 {name} chale gaye...\n\nArey yaar miss karenge bahut~ 🥺\nWapas aana kabhi! 🌸",
-    "😢 Bye bye {name}~\n\n🌸 Jaana hi tha toh theek hai...\nMeethi yaadein leke jana! 💘",
-    "🌺 {name} ne group chod diya...\n\nKhuda hafiz~ 💘 Jaldi wapas aa jaana!",
+_WELCOME_MEDIA_CAPTIONS = [
+    "Naya member! 🌸 {mention} — welcome ho~ 💘",
+    "{mention} aa gaye! 🎉 Group mein swagat hai~ 🌸",
 ]
 
-def get_welcome(name):
-    return random.choice(WELCOME_MSGS).format(name=name)
+def get_welcome(mention: str) -> str:
+    """Return a random welcome message with mention"""
+    msg = random.choice(_WELCOME_MSGS)
+    return msg.replace("{mention}", mention)
 
-def get_goodbye(name):
-    return random.choice(GOODBYE_MSGS).format(name=name)
+def get_welcome_caption(mention: str) -> str:
+    msg = random.choice(_WELCOME_MEDIA_CAPTIONS)
+    return msg.replace("{mention}", mention)
 
-# ── ORPHAN REPLY (80% chance) ──────────────────────────────────────────
+# ════════════════════════════════════════════════════════
+# GOODBYE MESSAGES
+# ════════════════════════════════════════════════════════
 
-ORPHAN_REPLIES = [
-    "Arey kisi ne suna nahi? Main hoon na~ 🌸 Bolo kya hua?",
-    "Lagta hai ignore ho gaye 😄 Main sun rahi hoon yaar~",
-    "Oye! Main bhi hoon yahan~ 💘 kya hua batao?",
-    "Hmm? 👀 kuch bola kya tumne?",
-    "Arey sab busy hain kya? 😂 Main hoon na~",
-    "Koi nahi hai kya? 🥺 Main hoon bolo bolo~",
-    "Haan haan main sun rahi hoon 😊 batao kya chal raha?",
-    "Ek baar aur bolo~ mujhe sunna hai 💘",
-    "Hmm interesting 🤔 aage batao?",
-    "Sach mein?? 😮 yeh toh pata nahi tha mujhe!",
-    "Aww yaar 🥺 kya baat hai~",
-    "Haha 😂 sahi kaha bilkul!",
-    "Main bhi yahi sochti hoon 💭",
-    "Wah wah 👏 kya baat hai~",
-    "Accha ji~ 🌸 thoda aur batao?",
+_GOODBYE_MSGS = [
+    "😢 {name} chala/chali gaya/gayi! Miss karenge~ 🌸",
+    "👋 Bye bye {name}! Take care~ 💘",
+    "💔 {name} ne group chod diya... sad~ 🌸",
+    "🚪 {name} left the chat. Aate rehna! 🌸",
+    "😔 {name} ab nahi rahega/rahegi... byeee 💘",
 ]
 
-def get_orphan_reply():
-    return random.choice(ORPHAN_REPLIES)
+def get_goodbye(name: str) -> str:
+    """Return a random goodbye message"""
+    msg = random.choice(_GOODBYE_MSGS)
+    return msg.replace("{name}", name)
 
-# ── INTERJECTIONS ─────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════
+# ABOUT TEXT
+# ════════════════════════════════════════════════════════
 
-RANDOM_INTERJECTIONS = [
-    "Kya scene hai yahan 😂💘",
-    "Main bhi hoon yahan koi puchhe toh 🌸",
-    "Arey drama toh dekho 👀💅",
-    "Yeh conversation bahut interesting hai 😄",
-    "Mujhe bhi shamil karo 🥺",
-    "Accha accha... main sun rahi thi 👂🌸",
-]
+ABOUT_TEXT = f"""
+🤖 <b>{BOT_NAME}</b>
 
-def get_interjection():
-    return random.choice(RANDOM_INTERJECTIONS)
+Advanced Telegram Group Manager with Smart AI 🌸
 
-# ── NAKHRE ────────────────────────────────────────────────────────────
+👨‍💻 Developer: {OWNER_USERNAME}
+📢 Updates: {UPDATE_CHANNEL}
 
-NAKHRE_REPLIES = [
-    "😤 Haye tameez nahi hai bilkul!\nYeh banda mujhe please 💅",
-    "Arey sharam karo thodi! 😳\nMain aise logo se baat nahi karti 🙄",
-    "Chup karo please 😭\nItni badtameezi? Nahi chalega!",
-    "Acha ji... bahut ho gaya 😒\nGhar jaao 😤",
-]
-
-def get_nakhre():
-    return random.choice(NAKHRE_REPLIES)
-
-# ── FONT STYLES ───────────────────────────────────────────────────────
-
-FONT_MAP = {
-    'a':'𝓪','b':'𝓫','c':'𝓬','d':'𝓭','e':'𝓮','f':'𝓯','g':'𝓰','h':'𝓱',
-    'i':'𝓲','j':'𝓳','k':'𝓴','l':'𝓵','m':'𝓶','n':'𝓷','o':'𝓸','p':'𝓹',
-    'q':'𝓺','r':'𝓻','s':'𝓼','t':'𝓽','u':'𝓾','v':'𝓿','w':'𝔀','x':'𝔁',
-    'y':'𝔂','z':'𝔃','A':'𝓐','B':'𝓑','C':'𝓒','D':'𝓓','E':'𝓔','F':'𝓕',
-    'G':'𝓖','H':'𝓗','I':'𝓘','J':'𝓙','K':'𝓚','L':'𝓛','M':'𝓜','N':'𝓝',
-    'O':'𝓞','P':'𝓟','Q':'𝓠','R':'𝓡','S':'𝓢','T':'𝓣','U':'𝓤','V':'𝓥',
-    'W':'𝓦','X':'𝓧','Y':'𝓨','Z':'𝓩'
-}
-
-BOLD_MAP = {
-    'a':'𝗮','b':'𝗯','c':'𝗰','d':'𝗱','e':'𝗲','f':'𝗳','g':'𝗴','h':'𝗵',
-    'i':'𝗶','j':'𝗷','k':'𝗸','l':'𝗹','m':'𝗺','n':'𝗻','o':'𝗼','p':'𝗽',
-    'q':'𝗾','r':'𝗿','s':'𝘀','t':'𝘁','u':'𝘂','v':'𝘃','w':'𝘄','x':'𝘅',
-    'y':'𝘆','z':'𝘇','A':'𝗔','B':'𝗕','C':'𝗖','D':'𝗗','E':'𝗘','F':'𝗙',
-    'G':'𝗚','H':'𝗛','I':'𝗜','J':'𝗝','K':'𝗞','L':'𝗟','M':'𝗠','N':'𝗡',
-    'O':'𝗢','P':'𝗣','Q':'𝗤','R':'𝗥','S':'𝗦','T':'𝗧','U':'𝗨','V':'𝗩',
-    'W':'𝗪','X':'𝗫','Y':'𝗬','Z':'𝗭'
-}
-
-def to_cursive(text): return ''.join(FONT_MAP.get(c, c) for c in text)
-def to_bold(text):    return ''.join(BOLD_MAP.get(c, c) for c in text)
-
-# ── SHAYARI ───────────────────────────────────────────────────────────
-
-SHAYARIS = [
-    "💘 𝑻𝒆𝒓𝒊 𝒚𝒂𝒂𝒅 𝒎𝒆𝒊𝒏 𝒌𝒉𝒐𝒚𝒂 𝒓𝒆𝒉𝒕𝒂 𝒉𝒐𝒐𝒏,\n𝑫𝒊𝒍 𝒌𝒂 𝒉𝒂𝒂𝒍 𝒏𝒂 𝒑𝒖𝒄𝒉𝒉𝒐 ~ 🌸",
-    "🌸 𝑴𝒐𝒉𝒂𝒃𝒃𝒂𝒕 𝒌𝒊 𝒓𝒂𝒂𝒉 𝒎𝒆𝒊𝒏 𝒌𝒂𝒂𝒏𝒕𝒐𝒏 𝒔𝒆 𝒅𝒂𝒓𝒐 𝒏𝒂,\n𝑱𝒐 𝒅𝒊𝒍 𝒔𝒆 𝒄𝒉𝒂𝒉𝒐 𝒖𝒔𝒆 𝒌𝒂𝒃𝒉𝒊 𝒄𝒉𝒉𝒐𝒅𝒏𝒂 𝒎𝒂𝒕 ~ 💘",
-    "💫 𝑨𝒂𝒏𝒌𝒉𝒐𝒏 𝒎𝒆𝒊𝒏 𝒕𝒆𝒓𝒊 𝒔𝒂𝒑𝒏𝒆 𝒉𝒂𝒊𝒏 𝒎𝒆𝒓𝒆,\n𝑫𝒊𝒍 𝒎𝒆𝒊𝒏 𝒕𝒆𝒓𝒊 𝒚𝒂𝒂𝒅𝒐𝒏 𝒌𝒂 𝒅𝒆𝒓𝒂 𝒉𝒂𝒊 ~ 🌺",
-    "🌺 𝒁𝒊𝒏𝒅𝒂𝒈𝒊 𝒕𝒆𝒓𝒊 𝒎𝒆𝒉𝒇𝒊𝒍 𝒎𝒆𝒊𝒏 𝒂𝒂𝒌𝒂𝒓,\n𝑲𝒉𝒖𝒅 𝒌𝒐 𝒑𝒂𝒂 𝒍𝒊𝒚𝒂 𝒎𝒂𝒊𝒏𝒆 ~ 💘",
-    "💐 𝑲𝒖𝒄𝒉 𝒓𝒊𝒔𝒉𝒕𝒆𝒚 𝒂𝒏𝒌𝒂𝒉𝒊 𝒃𝒂𝒂𝒕𝒐𝒏 𝒔𝒆 𝒃𝒂𝒏𝒕𝒆 𝒉𝒂𝒊𝒏,\n𝑲𝒖𝒄𝒉 𝒚𝒂𝒂𝒅𝒆𝒊𝒏 𝒃𝒊𝒏𝒂 𝒘𝒂𝒋𝒂𝒉 𝒌𝒆 𝒚𝒂𝒂𝒅 𝒂𝒂𝒕𝒊 𝒉𝒂𝒊𝒏 ~ 🌸",
-]
-
-def get_shayari(): return random.choice(SHAYARIS)
-
-# ── JOKES ─────────────────────────────────────────────────────────────
-
-JOKES = [
-    "😂 𝗧𝗲𝗮𝗰𝗵𝗲𝗿: Ek sentence mein future tense likho\n𝗦𝘁𝘂𝗱𝗲𝗻𝘁: Main so jaaunga\n𝗧𝗲𝗮𝗰𝗵𝗲𝗿: Bahut achha!\n𝗦𝘁𝘂𝗱𝗲𝗻𝘁: Shukriya, ab sone do 💤",
-    "😂 𝗗𝗼𝗰𝘁𝗼𝗿: Aap theek ho\n𝗠𝗲𝗿𝗶 𝗣𝗼𝗰𝗸𝗲𝘁: Nahi main nahi hoon 😭",
-    "😂 𝗠𝘂𝗺𝗺𝘆: Beta ghar kab aayega?\n𝗠𝗮𝗶𝗻: Aa raha hoon\n(3 ghante baad) Main hoon wahan ka jo aa raha tha 😂",
-    "😂 𝗘𝘅𝗮𝗺 𝗸𝗲 𝗯𝗮𝗮𝗱:\nPaper: Hard tha?\nMain: Woh main hi tha paper mein 💀",
-]
-
-def get_joke(): return random.choice(JOKES)
-
-COMPLIMENTS = [
-    "🌸 Tum bahut achhe insaan ho! Seriously~",
-    "💘 Tumhari smile toh mast hogi definitely!",
-    "✨ Tumse baat karke acha lagta hai 😊",
-    "💅 Tum kafi smart ho yaar!",
-    "😄 Tumhara sense of humor top hai!",
-]
-
-def get_compliment(): return random.choice(COMPLIMENTS)
-
-# ── ROASTS ────────────────────────────────────────────────────────────
-
-ROASTS = [
-    "😂 Bhai teri intelligence aur meri battery ek hi level pe hai — dono low hain! 💀",
-    "🔥 Tu itna slow hai ke tortoise bhi tujhe overtake karke chai pi ke aa gaya! 😂",
-    "💀 Tera WiFi signal aur teri smartness mein kuch zyada farq nahi — dono 1 bar pe hain!",
-    "😂 Tu Google Maps se bhi zyada confuse hai, aur use toh roads pata hain!",
-    "🔥 Teri personality aur plain bread mein ek hi cheez common hai — dono bland hain! 😂",
-    "💀 Tu itna boring hai ke alarm bhi tujhe sunke so jaata hai!",
-    "😂 Teri IQ aur room ka temperature ek hi hai — 0 degree! 🥶",
-    "🔥 Tu joke hai lekin funny nahi — tragic hai! 💀",
-]
-
-def get_roast(): return random.choice(ROASTS)
+Features:
+• Anti-Gaali (200+ words + leetspeak)
+• Anti-Raid Protection
+• Movie Copyright System
+• Smart Human-like AI
+• Notes System
+• Premium Subscription
+""".strip()
