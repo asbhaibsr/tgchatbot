@@ -517,6 +517,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await message.reply_text(note["content"], parse_mode="HTML")
                 return
 
+    # ── Filter auto-reply ───────────────────────────────────
+    # Check BEFORE chatbot so filter has priority
+    if chat.type != "private" and text:
+        from handlers.filters import check_and_reply_filter
+        filter_hit = await check_and_reply_filter(update, context)
+        if filter_hit:
+            return   # filter replied — stop here
+
     # ── Conversation learning ──────────────────────────────
     if text and message.reply_to_message and message.reply_to_message.from_user:
         ru = message.reply_to_message.from_user
