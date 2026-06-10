@@ -53,6 +53,14 @@ _HELP_ADMIN = """
 /delnote [name] — Note delete karo
 Type <code>#notename</code> anywhere to get a note!
 
+<b>Filters (Auto-Reply):</b>
+/filter 'keyword' text — Auto-reply filter set karo
+/filter 'keyword'  ← reply to media — Media filter
+/filters — Sab filters list
+/stop 'keyword' — Ek filter delete
+/stopall — Sab filters delete
+<i>Buttons: [Btn](url) syntax text mein!</i>
+
 <b>Welcome/Rules:</b>
 /setwelcome [msg] — Custom welcome set (variables: {name}, {group})
 /setgoodbye [msg] — Custom goodbye
