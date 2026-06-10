@@ -53,6 +53,10 @@ def _import_handlers():
         premium_handler, font_handler,
     )
     from handlers.chat import movie_file_handler, message_handler
+    from handlers.filters import (
+        filter_add_handler, filter_list_handler,
+        filter_stop_handler, filter_stopall_handler,
+    )
     return locals()
 
 
@@ -129,6 +133,11 @@ async def get_bot_app() -> Application:
         ("unlock_raid", h["unlock_raid_handler"]),
         ("adminlist",   h["adminlist_handler"]),
         ("report",      h["report_handler"]),
+        # ── Filter commands ──────────────────────────────
+        ("filter",      h["filter_add_handler"]),
+        ("filters",     h["filter_list_handler"]),
+        ("stop",        h["filter_stop_handler"]),
+        ("stopall",     h["filter_stopall_handler"]),
     ]:
         application.add_handler(CommandHandler(cmd, fn))
 
@@ -178,7 +187,7 @@ async def get_bot_app() -> Application:
         & ~filters.AUDIO           # ← exclude audio
         & ~filters.VOICE           # ← exclude voice
         & ~filters.ANIMATION       # ← exclude GIFs
-        & ~filters.STICKER,        # ← exclude stickers
+        & ~filters.Sticker.ALL,    # ← exclude stickers
         h["message_handler"],
     ))
 
