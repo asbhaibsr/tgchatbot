@@ -223,7 +223,24 @@ def find_reply(text: str, chat_id: int = None, user_name: str = None) -> str | N
         return chosen
 
     # 1. DB learned patterns (highest priority)
+    # Try: exact match → 3-word subsets → 2-word subsets
     pattern = get_best_pattern(text)
+    if not pattern:
+        words = text_lower.split()
+        # Try 3-word sliding window
+        if len(words) >= 3:
+            for i in range(len(words) - 2):
+                snippet = " ".join(words[i:i+3])
+                pattern = get_best_pattern(snippet)
+                if pattern:
+                    break
+        # Try 2-word sliding window
+        if not pattern and len(words) >= 2:
+            for i in range(len(words) - 1):
+                snippet = " ".join(words[i:i+2])
+                pattern = get_best_pattern(snippet)
+                if pattern:
+                    break
     if pattern:
         responses = pattern.get("responses", [])
         if responses:
@@ -317,14 +334,19 @@ def make_gaali_reply(chat_id: int = None) -> str:
 def learn_from_conversation(msg1: str, msg2: str, u1=None, u2=None) -> bool:
     if not msg1 or not msg2:
         return False
-    trigger = msg1.strip().lower()
+    trigger  = msg1.strip().lower()
     response = msg2.strip()
-    if len(trigger) < 3 or len(response) < 1:
+    if len(trigger) < 4 or len(response) < 2:
         return False
     if trigger.startswith("/") or "http" in trigger:
         return False
-    # Skip very generic triggers
-    if trigger in ["haan", "nahi", "ok", "okay", "hmm", "ha", "na"]:
+    # Skip very generic single-word triggers
+    _skip = {"haan", "nahi", "ok", "okay", "hmm", "ha", "na", "haa",
+             "kya", "hi", "bye", "ty", "thnx", "bhai", "yaar", "ji"}
+    if trigger in _skip:
+        return False
+    # Only learn if response is meaningful (not just emoji/single char)
+    if len(response.strip("😂🌸💘😄👀🥺❤️✅❌ ")) < 3:
         return False
     add_pattern(trigger, response, added_by=u1)
     return True
