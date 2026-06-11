@@ -58,65 +58,171 @@ async def _get_target(update, context, chat_id: int):
 # SETTINGS PANEL
 # ══════════════════════════════════════════════════════════
 
-def _settings_keyboard(chat_id: int) -> InlineKeyboardMarkup:
-    def btn(label, key, default=False):
-        val  = get_setting(chat_id, key, default)
-        icon = "✅" if val else "❌"
-        return InlineKeyboardButton(f"{icon} {label}", callback_data=f"tog_{key}")
+# ──────────────────────────────────────────────────────────
+# NEW CATEGORY-BASED SETTINGS PANEL
+# Main → Category → Detail + Toggle
+# ──────────────────────────────────────────────────────────
 
-    cap_mode = get_setting(chat_id, "movie_caption_mode", "hard").upper()
+def _tog_btn(chat_id, label, key, default=False, crown=""):
+    val  = get_setting(chat_id, key, default)
+    icon = "✅" if val else "❌"
+    return InlineKeyboardButton(f"{icon} {label}{crown}", callback_data=f"tog_{key}")
+
+def _main_settings_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     prem = is_premium(chat_id)
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🤖 Chatbot",        callback_data="scat_chatbot"),
+            InlineKeyboardButton("👋 Welcome",         callback_data="scat_welcome"),
+        ],
+        [
+            InlineKeyboardButton("🛡 Anti-Spam",       callback_data="scat_antispam"),
+            InlineKeyboardButton("🎬 Movie Sys",       callback_data="scat_movie"),
+        ],
+        [
+            InlineKeyboardButton("⚡ Advanced",        callback_data="scat_advanced"),
+            InlineKeyboardButton("❌ Close",            callback_data="close"),
+        ],
+    ])
 
+def _chatbot_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_tog_btn(chat_id, "Chatbot (Group mein reply)", "chat_bot_on", True)],
+        [InlineKeyboardButton("« Back", callback_data="settings_main")],
+    ])
+
+def _welcome_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [_tog_btn(chat_id, "Welcome Message",  "welcome_on",  True)],
+        [_tog_btn(chat_id, "Goodbye Message",  "goodbye_on",  True)],
+        [InlineKeyboardButton("« Back", callback_data="settings_main")],
+    ])
+
+def _antispam_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    prem = is_premium(chat_id)
     rows = [
-        [btn("Chatbot",       "chat_bot_on",    True),
-         btn("Welcome",       "welcome_on",     True)],
-        [btn("Goodbye",       "goodbye_on",     True),
-         btn("Anti-Gaali 🆓", "antigaali_on",   False)],
-        [btn("Anti-Username 🆓","antiusername_on", False),
-         btn("Anti-Link 👑",  "antilink_on",    False)],
+        [_tog_btn(chat_id, "Anti-Gaali", "antigaali_on", False, " 🆓"),
+         _tog_btn(chat_id, "Anti-Username", "antiusername_on", False, " 🆓")],
     ]
     if prem:
         rows += [
-            [btn("Anti-Fwd 👑",   "antifwd_on",    False),
-             btn("Anti-Raid 👑",  "antiraid_on",   False)],
-            [btn("Flood 👑",      "flood_on",      False),
-             btn("Auto-Del 👑",   "autodel_on",    False)],
-            [btn("Captcha 👑",    "captcha_on",    False),
-             btn("Movie Sys 👑",  "movie_on",      True)],
-            [InlineKeyboardButton(
-                f"🎬 Caption Mode: {cap_mode} 👑",
-                callback_data="cycle_movie_caption"
-            )],
+            [_tog_btn(chat_id, "Anti-Link",  "antilink_on",  False, " 👑"),
+             _tog_btn(chat_id, "Anti-Fwd",   "antifwd_on",   False, " 👑")],
+            [_tog_btn(chat_id, "Anti-Raid",  "antiraid_on",  False, " 👑")],
         ]
     else:
-        rows.append([InlineKeyboardButton(
-            "👑 Unlock Premium Features", callback_data="prem_info"
-        )])
+        rows.append([InlineKeyboardButton("👑 Premium mein unlock!", callback_data="prem_info")])
+    rows.append([InlineKeyboardButton("« Back", callback_data="settings_main")])
+    return InlineKeyboardMarkup(rows)
+
+def _movie_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    prem = is_premium(chat_id)
+    if not prem:
+        return InlineKeyboardMarkup([
+            [InlineKeyboardButton("👑 Premium Feature — Subscribe!", callback_data="prem_info")],
+            [InlineKeyboardButton("« Back", callback_data="settings_main")],
+        ])
+    cap_mode = get_setting(chat_id, "movie_caption_mode", "hard").upper()
+    cap_icons = {"HARD": "🔒 HARD", "SOFT": "✏️ SOFT", "OFF": "🚫 OFF"}
+    return InlineKeyboardMarkup([
+        [_tog_btn(chat_id, "Movie System", "movie_on", True, " 👑")],
+        [InlineKeyboardButton(
+            f"🎬 Caption: {cap_icons.get(cap_mode, cap_mode)} — Click to cycle",
+            callback_data="cycle_movie_caption",
+        )],
+        [InlineKeyboardButton("« Back", callback_data="settings_main")],
+    ])
+
+def _advanced_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    prem = is_premium(chat_id)
+    rows = []
+    if prem:
+        rows += [
+            [_tog_btn(chat_id, "Flood Control", "flood_on",  False, " 👑"),
+             _tog_btn(chat_id, "Auto-Delete",   "autodel_on", False, " 👑")],
+            [_tog_btn(chat_id, "Captcha",        "captcha_on", False, " 👑")],
+        ]
+    else:
+        rows.append([InlineKeyboardButton("👑 Premium mein unlock!", callback_data="prem_info")])
     rows += [
         [InlineKeyboardButton("⚡ Flood Limit",  callback_data="settings_flood"),
          InlineKeyboardButton("⏱ Auto-Del Time", callback_data="settings_autodel")],
         [InlineKeyboardButton("🔒 Lock Types",    callback_data="settings_locks"),
          InlineKeyboardButton("⚠️ Warn Limit",    callback_data="settings_warn")],
-        [InlineKeyboardButton("❌ Close",          callback_data="close")],
+        [InlineKeyboardButton("« Back", callback_data="settings_main")],
     ]
     return InlineKeyboardMarkup(rows)
+
+_CAT_TEXT = {
+    "scat_chatbot":  (
+        "🤖 <b>Chatbot Settings</b>\n\n"
+        "Bot group mein messages pe reply karta hai.\n"
+        "• ON: AI chatbot active, keywords pe reply\n"
+        "• OFF: Bot sirf commands sunta hai\n\n"
+        "<i>Admin reply se bot seekhta bhi hai!</i>"
+    ),
+    "scat_welcome":  (
+        "👋 <b>Welcome / Goodbye Settings</b>\n\n"
+        "• <b>Welcome ON</b>: Naye member pe greet\n"
+        "• <b>Goodbye ON</b>: Left member pe farewell\n\n"
+        "Custom message set karne ke liye:\n"
+        "<code>/setwelcome {name} swagat hai {group} mein!</code>\n"
+        "<code>/setgoodbye {name} ne group chhoda!</code>"
+    ),
+    "scat_antispam": (
+        "🛡 <b>Anti-Spam Settings</b>\n\n"
+        "🆓 <b>Anti-Gaali:</b> Hindi/English abusive words detect\n"
+        "🆓 <b>Anti-Username:</b> @username promo nahi\n"
+        "👑 <b>Anti-Link:</b> Sab URLs block\n"
+        "👑 <b>Anti-Fwd:</b> Forward messages block\n"
+        "👑 <b>Anti-Raid:</b> Spam joins auto lock\n\n"
+        "<i>3 gaali → mute → ban auto</i>"
+    ),
+    "scat_movie":    (
+        "🎬 <b>Movie System Settings</b>\n\n"
+        "Group mein file bhejne pe bot auto-replace karta hai:\n"
+        "• <b>HARD:</b> Ultra stylish caption + copyright\n"
+        "• <b>SOFT:</b> Light clean caption\n"
+        "• <b>OFF:</b> Original caption rakhta hai\n\n"
+        "<i>Bot ko delete permission chahiye!</i>"
+    ),
+    "scat_advanced": (
+        "⚡ <b>Advanced Settings</b>\n\n"
+        "👑 <b>Flood Control:</b> Fast messages pe auto-mute\n"
+        "👑 <b>Auto-Delete:</b> Files X time baad delete\n"
+        "👑 <b>Captcha:</b> New members ko math solve\n"
+        "⚡ <b>Flood Limit:</b> Msgs/10sec set karo\n"
+        "⏱ <b>Auto-Del Time:</b> Delete time set karo\n"
+        "🔒 <b>Lock Types:</b> Sticker/GIF/Poll lock\n"
+        "⚠️ <b>Warn Limit:</b> Max warns before ban"
+    ),
+}
+
+_CAT_KBD = {
+    "scat_chatbot":  _chatbot_keyboard,
+    "scat_welcome":  _welcome_keyboard,
+    "scat_antispam": _antispam_keyboard,
+    "scat_movie":    _movie_keyboard,
+    "scat_advanced": _advanced_keyboard,
+}
 
 async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
+    msg  = update.effective_message
     if chat.type == "private":
-        await update.message.reply_text("Group mein use karo /settings~ 🌸")
+        await msg.reply_text("Group mein use karo /settings~ 🌸")
         return
     if not await _is_user_admin(context, chat.id, user.id):
-        await update.message.reply_text("❌ Sirf admins!")
+        await msg.reply_text("❌ Sirf admins!")
         return
     prem = is_premium(chat.id)
-    await update.message.reply_text(
-        f"⚙️ <b>Settings — {chat.title}</b>\n\n"
-        f"{'👑 Premium Group' if prem else '🆓 Free Group'}\n\n"
-        "Features toggle karo:",
+    await msg.reply_text(
+        f"⚙️ <b>Settings — {chat.title}</b>\n"
+        f"{'👑 Premium Active' if prem else '🆓 Free Group'}\n\n"
+        "📌 Category choose karo:",
         parse_mode="HTML",
-        reply_markup=_settings_keyboard(chat.id),
+        reply_markup=_main_settings_keyboard(chat.id),
     )
 
 # ══════════════════════════════════════════════════════════
@@ -1607,8 +1713,23 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         except Exception:
             pass
 
+    # ── Category Settings sub-panels ─────────────────────
+    if data in _CAT_TEXT:
+        kbd_fn = _CAT_KBD[data]
+        try:
+            await query.edit_message_text(
+                _CAT_TEXT[data], parse_mode="HTML",
+                reply_markup=kbd_fn(chat.id),
+            )
+        except Exception:
+            await query.message.reply_text(
+                _CAT_TEXT[data], parse_mode="HTML",
+                reply_markup=kbd_fn(chat.id),
+            )
+        return
+
     # ── Toggle settings ──────────────────────────────────
-    elif data.startswith("tog_"):
+    if data.startswith("tog_"):
         if not await _is_user_admin(context, chat.id, user.id):
             await query.answer("❌ Sirf admins!", show_alert=True)
             return
@@ -1617,12 +1738,16 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         icon    = "✅" if new_val else "❌"
         label   = key.replace("_on","").replace("_"," ").strip().title()
         await query.answer(f"{icon} {label} {'ON' if new_val else 'OFF'}")
+        cat = "scat_chatbot"
+        if "welcome" in key or "goodbye" in key:   cat = "scat_welcome"
+        elif "anti" in key:                          cat = "scat_antispam"
+        elif "movie" in key or "caption" in key:    cat = "scat_movie"
+        elif any(k in key for k in ["flood","autodel","captcha","warn","lock"]): cat = "scat_advanced"
         try:
-            await query.edit_message_reply_markup(
-                reply_markup=_settings_keyboard(chat.id)
-            )
+            await query.edit_message_reply_markup(reply_markup=_CAT_KBD[cat](chat.id))
         except Exception:
             pass
+        return
 
     # ── Cycle movie caption mode ─────────────────────────
     elif data == "cycle_movie_caption":
@@ -1694,9 +1819,14 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         set_setting(chat.id, "locked_types", locked)
 
     elif data == "settings_main":
+        prem = is_premium(chat.id)
         try:
-            await query.edit_message_reply_markup(
-                reply_markup=_settings_keyboard(chat.id)
+            await query.edit_message_text(
+                f"⚙️ <b>Settings — {chat.title}</b>\n"
+                f"{'👑 Premium Active' if prem else '🆓 Free Group'}\n\n"
+                "📌 Category choose karo:",
+                parse_mode="HTML",
+                reply_markup=_main_settings_keyboard(chat.id),
             )
         except Exception:
             pass
