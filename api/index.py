@@ -53,6 +53,11 @@ def _import_handlers():
         premium_handler, font_handler,
     )
     from handlers.chat import movie_file_handler, message_handler
+    from handlers.admin import (
+        string_status_handler,
+        sticker_mode_handler, sticker_done_handler,
+        sticker_list_handler, sticker_clear_handler,
+    )
     from handlers.filters import (
         filter_add_handler, filter_list_handler,
         filter_stop_handler, filter_stopall_handler,
@@ -134,7 +139,14 @@ async def get_bot_app() -> Application:
         ("adminlist",   h["adminlist_handler"]),
         ("report",      h["report_handler"]),
         # ── Filter commands ──────────────────────────────
-        ("filter",      h["filter_add_handler"]),
+        # ── String session + Sticker commands ──────────────
+        ("string",       h["string_status_handler"]),
+        ("sticker",      h["sticker_mode_handler"]),
+        ("stickerdone",  h["sticker_done_handler"]),
+        ("stickers",     h["sticker_list_handler"]),
+        ("stickerclear", h["sticker_clear_handler"]),
+        # ── Filter commands ──────────────────────────────
+        ("filter",       h["filter_add_handler"]),
         ("filters",     h["filter_list_handler"]),
         ("stop",        h["filter_stop_handler"]),
         ("stopall",     h["filter_stopall_handler"]),
