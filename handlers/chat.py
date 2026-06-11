@@ -118,56 +118,155 @@ def has_username_promo(text: str, bot_username: str = "") -> bool:
     return False
 
 # ══════════════════════════════════════════════════════════
-# CAPTION OBFUSCATION
+# CAPTION BUILDER — SOFT & HARD
 # ══════════════════════════════════════════════════════════
-_SOFT_MAP = {"a":"а","e":"е","o":"о","p":"р","c":"с","x":"х"}
-_HARD_CHAR = {
-    "a":["@","4","α","𝗮"],"e":["3","£","ε","𝗲"],"i":["!","1","ι","𝗶"],
-    "o":["0","ο","σ","𝗼"],"s":["$","5","ƨ","𝘀"],"t":["7","†","τ","𝘁"],
-    "n":["ɴ","η","𝗻"],"r":["ʀ","ɾ","𝗿"],"l":["ʟ","|","𝗹"],
-    "m":["ɱ","𝗺"],"b":["ʙ","𝗯"],"d":["ᴅ","𝗱"],"h":["ʜ","𝗵"],
-    "k":["ᴋ","𝗸"],"v":["ᴠ","𝘃"],"u":["υ","𝘂"],"g":["ɢ","𝗴"],
-}
-_QUALITY_HARD = {
-    "1080p":"1080ᴾ","720p":"720ᴾ","480p":"480ᴾ","4k":"4ᴷ","2160p":"2160ᴾ",
-    "hdr":"ʜᴅʀ","hevc":"ʜᴇᴠᴄ","x265":"𝗫265","x264":"𝗫264",
-    "webrip":"ᴡᴇʙʀɪᴘ","web-dl":"ᴡᴇʙᴅʟ","bluray":"ʙʟᴜʀᴀʏ","blu-ray":"ʙʟᴜʀᴀʏ",
-    "dvdrip":"ᴅᴠᴅʀɪᴘ","hdrip":"ʜᴅʀɪᴘ","hindi":"ʜɪɴᴅɪ","english":"ᴇɴɢ",
-    "dual":"ᴅᴜᴀʟ","multi":"ᴍᴜʟᴛɪ","aac":"ᴀᴀᴄ","ac3":"ᴀᴄ3",
-    "esub":"ᴇꜱᴜʙ","msub":"ᴍꜱᴜʙ",
+
+# ── HARD mode: Mixed stylish Unicode + look-alike symbols ──
+_HARD_TITLE_MAP = {
+    'A': ['𝑨', '@', '4'],
+    'B': ['𝑩'],
+    'C': ['𝑪', '¢'],
+    'D': ['𝑫'],
+    'E': ['𝑬', '€', '3'],
+    'F': ['𝑭'],
+    'G': ['𝑮', '9'],
+    'H': ['𝑯'],
+    'I': ['𝑰', '¡', '!'],
+    'J': ['𝑱'],
+    'K': ['𝑲'],
+    'L': ['𝑳', '|'],
+    'M': ['𝑴'],
+    'N': ['𝑵'],
+    'O': ['O', '0'],
+    'P': ['𝑷', '₱'],
+    'Q': ['𝑸'],
+    'R': ['𝑹', '₹'],
+    'S': ['𝑺', '$'],
+    'T': ['𝑻', '†'],
+    'U': ['𝑼', 'υ'],
+    'V': ['𝑽', '√'],
+    'W': ['𝑾'],
+    'X': ['𝑿', '×'],
+    'Y': ['𝒀', '¥'],
+    'Z': ['𝒁', '2'],
+    '0': ['O', '0'],
+    '1': ['1', '|'],
+    '2': ['2'],
+    '3': ['3'],
+    '4': ['4'],
+    '5': ['5', '$'],
+    '6': ['6'],
+    '7': ['7'],
+    '8': ['8'],
+    '9': ['9'],
 }
 
-def obfuscate_caption_soft(caption: str) -> str:
-    if not caption:
-        return ""
+# For quality labels: replace vowels + common letters with symbols
+_QUAL_CHAR_MAP = {
+    'a': "'", 'e': '€', 'i': "'", 'o': 'O', 'u': 'υ',
+    'A': '@', 'E': '€', 'I': '¡', 'O': 'O', 'U': 'υ',
+    'l': '|', 'L': '|', 'r': '₹', 'R': '₹',
+    '0': 'O',
+}
+
+def _obf_title(text: str) -> str:
+    """Obfuscate movie title: mix italic bold + look-alike symbols."""
     result = ""
-    for ch in caption:
-        if ch in _SOFT_MAP and random.random() < 0.35:
-            result += _SOFT_MAP[ch]
-        else:
-            result += ch
+    for ch in text.upper():
+        opts = _HARD_TITLE_MAP.get(ch, [ch])
+        result += random.choice(opts)
     return result
 
-def obfuscate_caption_hard(caption: str) -> str:
-    if not caption:
-        return ""
-    result = caption
-    for q, qv in _QUALITY_HARD.items():
-        result = re.sub(re.escape(q), qv, result, flags=re.IGNORECASE)
-    parts, final = result.split(), []
-    for p in parts:
-        if any(qv in p for qv in _QUALITY_HARD.values()):
-            final.append(p)
-        else:
-            obf = ""
-            for ch in p:
-                cl = ch.lower()
-                if cl in _HARD_CHAR and random.random() < 0.55:
-                    obf += random.choice(_HARD_CHAR[cl])
-                else:
-                    obf += ch
-            final.append(obf)
-    return " ".join(final)
+def _obf_year(year: str) -> str:
+    """Obfuscate year: 0→O."""
+    return year.replace('0', 'O')
+
+def _obf_quality_label(text: str) -> str:
+    """Partially obfuscate quality labels."""
+    result = ""
+    for ch in text:
+        result += _QUAL_CHAR_MAP.get(ch, ch)
+    return result
+
+_QUALITY_LABELS = [
+    ("4K",     r"\b(4[Kk]|2160[Pp])\b"),
+    ("1080P",  r"\b1080[Pp]\b"),
+    ("720P",   r"\b720[Pp]\b"),
+    ("480P",   r"\b480[Pp]\b"),
+    ("BluRay", r"\b(blu.?ray|bluray)\b"),
+    ("WEBRip", r"\b(web.?rip|webrip)\b"),
+    ("WEB-DL", r"\b(web.?dl|webdl)\b"),
+    ("HEVC",   r"\b(hevc|x265|h\.?265)\b"),
+    ("x264",   r"\b(x264|h\.?264)\b"),
+    ("HDR",    r"\bhdr\b"),
+    ("Hindi",  r"\bhindi\b"),
+    ("Dual",   r"\bdual\b"),
+    ("Multi",  r"\bmulti\b"),
+    ("ESub",   r"\besub\b"),
+]
+
+def _extract_info(raw: str):
+    """Return (movie_name, year, [qualities]) from raw caption."""
+    # Strip URLs first
+    clean = _URL_RE.sub("", raw or "").strip()
+    # Replace dots/underscores with space
+    clean = re.sub(r"[._]", " ", clean)
+    # Extract year
+    year_m = re.search(r"\b(19|20)\d{2}\b", clean)
+    year   = year_m.group() if year_m else ""
+    # Extract qualities
+    quals = [label for label, pat in _QUALITY_LABELS if re.search(pat, clean, re.I)]
+    # Extract name: everything before year or first quality word
+    name = clean
+    if year:
+        name = clean[:year_m.start()].strip()
+    else:
+        for _, pat in _QUALITY_LABELS:
+            m2 = re.search(pat, name, re.I)
+            if m2:
+                name = name[:m2.start()].strip()
+                break
+    name = re.sub(r"\s+", " ", name).strip() or clean[:30]
+    return name, year, quals
+
+def obfuscate_caption_soft(raw: str, del_info: str = "") -> str:
+    """SOFT: Clean readable caption with light formatting."""
+    name, year, quals = _extract_info(raw)
+    yr_str = f" ({year})" if year else ""
+    q_str  = " • ".join(quals[:3]) if quals else ""
+    lines  = [f"🎬 {name}{yr_str}"]
+    if q_str:
+        lines.append(f"📊 {q_str}")
+    lines.append("━━━━━━━━━━━━━━━━━━━")
+    lines.append("⛔ Forward Prohibited")
+    if del_info:
+        lines.append(f"⏰ {del_info}")
+    return "\n".join(lines)
+
+def obfuscate_caption_hard(raw: str, bot_uname: str = "", del_info: str = "") -> str:
+    """HARD: Ultra obfuscated title (mixed unicode+symbols) + no copyright line."""
+    name, year, quals = _extract_info(raw)
+
+    # Obfuscate title and year
+    obf_title = _obf_title(name)
+    obf_year  = f" ({_obf_year(year)})" if year else ""
+
+    # Obfuscate each quality label
+    obf_quals = " • ".join(_obf_quality_label(q) for q in quals[:4]) if quals else ""
+
+    lines = [
+        f"꧁✨ {obf_title}{obf_year} ✨꧂",
+        "━━━━━━━━━━━━━━━━━━━━━",
+    ]
+    if obf_quals:
+        lines.append(f"📊 {obf_quals}")
+        lines.append("━━━━━━━━━━━━━━━━━━━━━")
+    lines.append("⛔ Forward/Share Prohibited")
+    if del_info:
+        lines.append(f"⏰ {del_info}")
+    if bot_uname:
+        lines.append(f"🤖 {bot_uname}")
+    return "\n".join(lines)
 
 # ══════════════════════════════════════════════════════════
 # ROAST MESSAGES
@@ -224,13 +323,27 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # finds the hash and returns above without double-sending
     store_file_hash(chat.id, unique_id, file_id, original_caption, user.id)
 
+    # ── Get bot username for caption ──────────────────────
+    bot_me = await context.bot.get_me()
+    bot_uname = f"@{bot_me.username}" if bot_me.username else ""
+
+    # ── Build del_info string (goes INSIDE caption) ────────
+    del_info = ""
+    del_secs = 0
+    if get_setting(chat.id, "autodel_on", False):
+        del_secs  = get_setting(chat.id, "autodel_time", 3600)
+        hours     = del_secs // 3600
+        mins      = (del_secs % 3600) // 60
+        readable  = f"{hours}h {mins}m" if (hours and mins) else (f"{hours}h" if hours else f"{mins}m")
+        del_info  = f"Delete in {readable} • Save Now!"
+
     # ── Build obfuscated caption ───────────────────────────
     if caption_mode == "off":
-        new_caption = original_caption or None
+        new_caption = _URL_RE.sub("", original_caption).strip() or None
     elif caption_mode == "soft":
-        new_caption = obfuscate_caption_soft(original_caption) or None
-    else:
-        new_caption = obfuscate_caption_hard(original_caption) or None
+        new_caption = obfuscate_caption_soft(original_caption, del_info) or None
+    else:  # hard
+        new_caption = obfuscate_caption_hard(original_caption, bot_uname, del_info) or None
 
     # ── STEP 1: Forward ORIGINAL to log channel ───────────
     if FILE_LOG_CHANNEL:
@@ -285,33 +398,10 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         else:
             sent = await context.bot.send_video(video=file_id, **send_kwargs)
 
-        # ── STEP 4: Deletion warning + roast ─────────────
-        if get_setting(chat.id, "autodel_on", False):
-            del_secs  = get_setting(chat.id, "autodel_time", 3600)
+        # ── STEP 4: Schedule deletion (warning already in caption) ─
+        if del_secs > 0:
             delete_at = datetime.now() + timedelta(seconds=del_secs)
             schedule_delete(chat.id, sent.message_id, delete_at)
-
-            hours = del_secs // 3600
-            mins  = (del_secs % 3600) // 60
-            if hours and mins:
-                readable = f"{hours}h {mins}m"
-            elif hours:
-                readable = f"{hours} ghante"
-            else:
-                readable = f"{mins} minute"
-
-            del_time_str = delete_at.strftime("%I:%M %p")
-            roast = random.choice(_ROAST_MSGS)
-
-            await context.bot.send_message(
-                chat.id,
-                f"⚠️ <b>Jaldi Save Karo!</b>\n\n"
-                f"🕐 Yeh file <b>{readable}</b> baad delete hogi\n"
-                f"⏰ Delete time: <b>{del_time_str}</b>\n\n"
-                f"💾 <b>Saved Messages mein save karo abhi!</b>\n\n"
-                f"🤣 {roast}",
-                parse_mode="HTML",
-            )
 
     except Exception as e:
         print(f"[MOVIE] Send error: {e}")
@@ -628,21 +718,28 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not get_setting(chat.id, "chat_bot_on", True):
         return
 
-    # ══ FIX 4: Only reply to TEXT messages in groups ═══════
-    # Don't reply to photo captions etc unless directly mentioned
+    # ══ REPLY LOGIC: 80% standalone, 10% reply/mention ═══
     is_text_msg = bool(message.text)
     text_lower  = text.lower() if text else ""
-    mentioned   = any(t in text_lower for t in BOT_TRIGGERS)
+
+    # Detect mention / reply-to-bot
+    mentioned = any(t in text_lower for t in BOT_TRIGGERS)
     replied_to_bot = (
         message.reply_to_message
         and message.reply_to_message.from_user
         and message.reply_to_message.from_user.id == context.bot.id
     )
-    should_reply = mentioned or replied_to_bot
+    is_reply_or_tag = mentioned or replied_to_bot
 
-    # Random chatbot trigger — ONLY for pure text messages
-    if not should_reply and is_text_msg and len(text) > 3:
+    if not is_text_msg or len(text) < 2:
+        return  # Only reply to plain text
+
+    if is_reply_or_tag:
+        # Reply/mention: 10% chance
         should_reply = random.random() < 0.10
+    else:
+        # Standalone message: 80% chance
+        should_reply = random.random() < 0.80
 
     if not should_reply:
         return
