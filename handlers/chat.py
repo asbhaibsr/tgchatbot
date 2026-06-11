@@ -7,6 +7,7 @@ from telegram.constants import ChatAction
 
 from core.db import (
     save_user, save_message, is_blocked, get_setting, is_premium,
+    save_sticker, get_stickers,
     is_flooding, schedule_delete, save_active_member, inc_message_count,
     push_context, get_gaali_strikes, inc_gaali_strike, reset_gaali_strikes,
     store_file_hash, find_file_by_unique_id, get_note, get_all_notes,
@@ -607,6 +608,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await message.reply_text(note["content"], parse_mode="HTML")
                 return
 
+    # ── Sticker save mode ──────────────────────────────────
+    # If admin sent sticker while sticker_pending is ON, save it
+    if chat.type != "private" and message.sticker:
+        if get_setting(chat.id, "sticker_pending", False):
+            if await _is_user_admin(context, chat.id, user.id):
+                save_sticker(chat.id, message.sticker.file_id)
+                await message.reply_text("✅ Sticker saved! Aur bhejo ya /stickerdone karo.")
+                return
+
     # ── Filter auto-reply ───────────────────────────────────
     # Check BEFORE chatbot so filter has priority
     if chat.type != "private" and text:
@@ -752,6 +762,20 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not reply:
             reply = make_girl_reply(chat_id=chat.id)
 
+        # ── Userbot group search fallback ───────────────────────
+        if not reply:
+            try:
+                import os as _os
+                if _os.environ.get("USERBOT_SESSION"):
+                    from core.userbot import search_group_reply
+                    reply = await search_group_reply(text)
+            except Exception as _ube:
+                print(f"[USERBOT FALLBACK] {_ube}")
+
+    if not reply:
+        return  # nothing found anywhere — stay silent
+
+    # ── Typing delay (feels natural) ────────────────────────
     delay = min(0.8 + len(text) * 0.03, 3.0)
     await asyncio.sleep(random.uniform(delay * 0.6, delay))
     await context.bot.send_chat_action(chat.id, ChatAction.TYPING)
@@ -759,7 +783,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await message.reply_text(reply)
-        if should_send_sticker():
+
+        # ── Sticker after reply (20% from saved, else persona sticker) ──
+        saved_stickers = get_stickers(chat.id)
+        if saved_stickers and random.random() < 0.20:
+            try:
+                await asyncio.sleep(0.4)
+                await message.reply_sticker(random.choice(saved_stickers))
+            except Exception:
+                pass
+        elif should_send_sticker():
             sticker_id = get_sticker("happy")
             try:
                 await asyncio.sleep(0.5)
