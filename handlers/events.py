@@ -307,10 +307,10 @@ _ADMIN_PREFIXES = (
     "unban_", "unmute_", "resetwarn_",
     "prem_a_", "prem_r_",
     "tog_", "cycle_",
-    "settings_",
+    "settings_", "scat_",           # ← scat_ = settings category
     "rep_", "locktype_",
-    "tagall_stop_",    # ← FIX: tagall stop button
-    "tagall_resume_",  # ← FIX: tagall resume button
+    "tagall_stop_",
+    "tagall_resume_",
 )
 
 _ADMIN_EXACT = {
