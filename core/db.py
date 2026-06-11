@@ -462,3 +462,32 @@ def find_matching_filter(chat_id: int, text: str):
             if kw in text_lower:
                 return f
     return None
+
+# ════════ STICKERS ════════
+stickers_col = db["chat_stickers"]
+
+def save_sticker(chat_id: int, file_id: str):
+    """Save a sticker file_id for this chat (max 50)."""
+    stickers_col.update_one(
+        {"chat_id": chat_id},
+        {
+            "$addToSet": {"file_ids": file_id},
+            "$setOnInsert": {"chat_id": chat_id},
+        },
+        upsert=True,
+    )
+    # Keep max 50
+    stickers_col.update_one(
+        {"chat_id": chat_id, "$expr": {"$gt": [{"$size": "$file_ids"}, 50]}},
+        {"$pop": {"file_ids": -1}},
+    )
+
+def get_stickers(chat_id: int) -> list:
+    doc = stickers_col.find_one({"chat_id": chat_id})
+    return doc.get("file_ids", []) if doc else []
+
+def remove_sticker(chat_id: int, file_id: str):
+    stickers_col.update_one({"chat_id": chat_id}, {"$pull": {"file_ids": file_id}})
+
+def clear_stickers(chat_id: int):
+    stickers_col.delete_one({"chat_id": chat_id})
