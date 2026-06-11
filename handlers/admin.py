@@ -17,6 +17,8 @@ from core.db import (
     add_scheduled, get_scheduled, del_scheduled,
     set_tagall_job, get_tagall_job, pause_tagall, resume_tagall,
     update_tagall_progress, clear_tagall_job, is_tagall_paused,
+    save_sticker, get_stickers, clear_stickers,
+    remove_sticker,
 )
 
 ADMIN_ID       = int(os.environ.get("ADMIN_ID", "0"))
@@ -1900,3 +1902,133 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
                 )],
             ]),
         )
+
+
+# ════════════════════════════════════════════════════════════
+# /string — Check userbot string session status
+# ════════════════════════════════════════════════════════════
+
+async def string_status_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/string — Show if Pyrogram string session is active."""
+    user    = update.effective_user
+    message = update.effective_message
+
+    # Owner-only
+    if user.id != ADMIN_ID:
+        await message.reply_text("❌ Sirf bot owner ke liye!")
+        return
+
+    wait_msg = await message.reply_text("🔍 Session check kar raha hoon...")
+
+    from core.userbot import check_session
+    info = await check_session()
+
+    if info.get("active"):
+        text = (
+            f"✅ <b>String Session ACTIVE!</b>\n\n"
+            f"👤 Account: <b>{info['name']}</b>\n"
+            f"📱 Phone: <code>{info['phone']}</code>\n"
+            f"👥 Groups: <b>{info['groups']}</b> groups mein joined\n\n"
+            f"<i>Bot is in groups se conversations search karke reply dega!</i>"
+        )
+    else:
+        reason = info.get("reason", "Unknown error")
+        text = (
+            f"❌ <b>String Session INACTIVE</b>\n\n"
+            f"❗ Reason: <code>{reason}</code>\n\n"
+            f"<b>Setup karne ke liye:</b>\n"
+            f"1. my.telegram.org → API_ID aur API_HASH lo\n"
+            f"2. Pyrogram string session generate karo\n"
+            f"3. Vercel mein env set karo:\n"
+            f"   • <code>API_ID</code>\n"
+            f"   • <code>API_HASH</code>\n"
+            f"   • <code>USERBOT_SESSION</code>"
+        )
+
+    await wait_msg.edit_text(text, parse_mode="HTML")
+
+
+# ════════════════════════════════════════════════════════════
+# /sticker — Save stickers for bot to use in replies
+# ════════════════════════════════════════════════════════════
+
+async def sticker_mode_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/sticker — Enter sticker-save mode."""
+    chat    = update.effective_chat
+    user    = update.effective_user
+    message = update.effective_message
+
+    if chat.type == "private":
+        await message.reply_text("Group mein use karo!")
+        return
+    if not await _is_user_admin(context, chat.id, user.id):
+        await message.reply_text("❌ Sirf admins!")
+        return
+
+    # Set pending flag in DB
+    set_setting(chat.id, "sticker_pending", True)
+
+    stickers = get_stickers(chat.id)
+    saved    = len(stickers)
+
+    await message.reply_text(
+        f"🎭 <b>Sticker Save Mode ON!</b>\n\n"
+        f"Ab koi bhi sticker bhejo → bot save kar lega.\n"
+        f"Bot replies mein 20% chance se yahi sticker aayega!\n\n"
+        f"📦 Already saved: <b>{saved}</b> stickers\n\n"
+        f"<i>✅ Sticker bhejo | /stickerdone — finish</i>",
+        parse_mode="HTML",
+    )
+
+
+async def sticker_done_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/stickerdone — Exit sticker-save mode."""
+    chat    = update.effective_chat
+    message = update.effective_message
+
+    if chat.type == "private":
+        return
+    set_setting(chat.id, "sticker_pending", False)
+    stickers = get_stickers(chat.id)
+    await message.reply_text(
+        f"✅ Sticker mode OFF!\n"
+        f"📦 Total saved: <b>{len(stickers)}</b> stickers",
+        parse_mode="HTML",
+    )
+
+
+async def sticker_list_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/stickers — Show sticker count."""
+    chat    = update.effective_chat
+    message = update.effective_message
+
+    if chat.type == "private":
+        return
+    stickers = get_stickers(chat.id)
+    if not stickers:
+        await message.reply_text(
+            "📭 Koi sticker save nahi!\n/sticker se save karo."
+        )
+        return
+    await message.reply_text(
+        f"🎭 <b>Saved Stickers: {len(stickers)}</b>\n\n"
+        f"Bot replies mein randomly inhe use karta hai.\n"
+        f"/stickerclear — sab delete karo",
+        parse_mode="HTML",
+    )
+
+
+async def sticker_clear_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/stickerclear — Delete all saved stickers."""
+    chat    = update.effective_chat
+    user    = update.effective_user
+    message = update.effective_message
+
+    if chat.type == "private":
+        return
+    if not await _is_user_admin(context, chat.id, user.id):
+        await message.reply_text("❌ Sirf admins!")
+        return
+
+    clear_stickers(chat.id)
+    await message.reply_text("✅ Sab stickers delete kar diye! 🗑")
