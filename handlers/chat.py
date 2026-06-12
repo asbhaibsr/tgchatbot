@@ -1,4 +1,4 @@
-import os, re, asyncio, random
+import os, re, asyncio, random, string
 from datetime import datetime, timedelta
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
@@ -13,6 +13,12 @@ from core.db import (
     store_file_hash, find_file_by_unique_id, get_note, get_all_notes,
     record_raid_join, detect_raid, add_warn, get_warns, reset_warns,
     get_captcha, del_captcha,
+    # NEW additions
+    save_movie_request, get_requesters_today,
+    save_forward_cache, get_forward_cache,
+    has_bio_perm, grant_bio_perm,
+    get_captcha_token_doc, del_captcha_token, set_captcha_token,
+    get_global_stickers, save_global_stickers,
 )
 from core.brain import (
     make_girl_reply, make_gaali_reply,
@@ -22,6 +28,14 @@ from core.persona import BOT_TRIGGERS, get_sticker, should_send_sticker
 
 ADMIN_ID         = int(os.environ.get("ADMIN_ID", "0"))
 FILE_LOG_CHANNEL = os.environ.get("FILE_LOG_CHANNEL", "")
+FORWARD_CHANNEL  = os.environ.get("FORWARD_CHANNEL", "")   # separate channel for file cache
+
+# In-memory bio check cache: user_id → (has_links: bool, checked_at: datetime)
+_bio_cache: dict = {}
+BIO_CACHE_TTL = 3600  # 1 hour
+
+# In-memory dedup: last N bot messages per chat to prevent repetition
+_last_bot_msgs: dict = {}  # chat_id → [last 5 replies]
 
 # ══════════════════════════════════════════════════════════
 # ANTI-GAALI — 200+ words + leetspeak
@@ -117,6 +131,35 @@ def has_username_promo(text: str, bot_username: str = "") -> bool:
         if m.lstrip("@").lower() != bot_username.lower():
             return True
     return False
+
+async def _check_bio_links(context, user, bot_username: str = "") -> bool:
+    """Check if user's bio contains links/usernames. Cached 1hr."""
+    now = datetime.now()
+    cached = _bio_cache.get(user.id)
+    if cached:
+        result, checked_at = cached
+        if (now - checked_at).total_seconds() < BIO_CACHE_TTL:
+            return result
+    try:
+        user_chat = await context.bot.get_chat(user.id)
+        bio = user_chat.bio or ""
+        has_link = has_url(bio) or has_username_promo(bio, bot_username)
+        _bio_cache[user.id] = (has_link, now)
+        return has_link
+    except Exception:
+        return False
+
+def _is_bot_reply_duplicate(chat_id: int, reply_text: str) -> bool:
+    """Check if bot already sent this exact reply recently in this chat."""
+    last_msgs = _last_bot_msgs.get(chat_id, [])
+    return reply_text in last_msgs
+
+def _record_bot_reply(chat_id: int, reply_text: str):
+    """Track last 5 bot replies per chat for dedup."""
+    if chat_id not in _last_bot_msgs:
+        _last_bot_msgs[chat_id] = []
+    _last_bot_msgs[chat_id].append(reply_text)
+    _last_bot_msgs[chat_id] = _last_bot_msgs[chat_id][-5:]
 
 # ══════════════════════════════════════════════════════════
 # CAPTION BUILDER — SOFT & HARD
@@ -308,45 +351,78 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     original_caption = message.caption or ""
     caption_mode = get_setting(chat.id, "movie_caption_mode", "hard")
 
-    # ══ FIX 1: DUPLICATE CHECK FIRST ══════════════════════
-    # Prevents double-send when Telegram retries webhook
+    # ══ DUPLICATE CHECK ══════════════════════════════════
     existing = find_file_by_unique_id(unique_id)
     if existing:
-        # Already processed — silently delete the duplicate user message
         try:
             await message.delete()
         except Exception:
             pass
-        return  # DO NOT send again
+        return
 
-    # ── Store hash IMMEDIATELY (before any network calls) ──
-    # This acts as a lock — if webhook is retried, second call
-    # finds the hash and returns above without double-sending
     store_file_hash(chat.id, unique_id, file_id, original_caption, user.id)
 
-    # ── Get bot username for caption ──────────────────────
-    bot_me = await context.bot.get_me()
+    # ── Get bot info ──────────────────────────────────────
+    bot_me    = await context.bot.get_me()
     bot_uname = f"@{bot_me.username}" if bot_me.username else ""
 
-    # ── Build del_info string (goes INSIDE caption) ────────
+    # ── Extract movie name for cache key ──────────────────
+    movie_name, _, _ = _extract_info(original_caption)
+    caption_key = movie_name.lower().strip()[:50] if movie_name else unique_id
+
+    # ── Check FORWARD_CHANNEL cache (use cached file if available) ─
+    cached = get_forward_cache(caption_key) if caption_key else None
+    if cached and cached.get("file_id"):
+        use_file_id = cached["file_id"]
+        use_is_doc  = cached.get("is_doc", is_doc)
+        print(f"[MOVIE] Using cached file for '{caption_key}'")
+    else:
+        use_file_id = file_id
+        use_is_doc  = is_doc
+
+    # ── Get today's requesters for tagging ────────────────
+    requesters = get_requesters_today(chat.id, caption_key) if caption_key else []
+    # Filter out the uploader
+    requesters = [r for r in requesters if r["user_id"] != user.id]
+
+    # ── Build del_info ────────────────────────────────────
     del_info = ""
     del_secs = 0
+    delete_time_str = ""
     if get_setting(chat.id, "autodel_on", False):
         del_secs  = get_setting(chat.id, "autodel_time", 3600)
         hours     = del_secs // 3600
         mins      = (del_secs % 3600) // 60
         readable  = f"{hours}h {mins}m" if (hours and mins) else (f"{hours}h" if hours else f"{mins}m")
-        del_info  = f"Delete in {readable} • Save Now!"
+        delete_at = datetime.now() + timedelta(seconds=del_secs)
+        delete_time_str = delete_at.strftime("%H:%M")
+        del_info  = f"⏰ {delete_time_str} pe delete hogi — abhi Save karo!"
 
-    # ── Build obfuscated caption ───────────────────────────
+    # ── Build caption with tags ───────────────────────────
     if caption_mode == "off":
-        new_caption = _URL_RE.sub("", original_caption).strip() or None
+        base_caption = _URL_RE.sub("", original_caption).strip() or ""
     elif caption_mode == "soft":
-        new_caption = obfuscate_caption_soft(original_caption, del_info) or None
-    else:  # hard
-        new_caption = obfuscate_caption_hard(original_caption, bot_uname, del_info) or None
+        base_caption = obfuscate_caption_soft(original_caption, del_info)
+    else:
+        base_caption = obfuscate_caption_hard(original_caption, bot_uname, del_info)
 
-    # ── STEP 1: Forward ORIGINAL to log channel ───────────
+    # Add requester tags
+    tag_line = ""
+    if requesters:
+        tags = "".join(
+            f'<a href="tg://user?id={r["user_id"]}">{r["user_name"]}</a> '
+            for r in requesters[:6]
+        )
+        tag_line = f"\n\n🔔 {tags}"
+
+    if del_info and caption_mode != "off" and delete_time_str:
+        save_reminder = f"\n\n⚠️ Ye file {delete_time_str} tak group mein rahegi!\nApne Saved Messages mein save karo!"
+    else:
+        save_reminder = ""
+
+    new_caption = (base_caption + tag_line + save_reminder).strip()[:1024] or None
+
+    # ── STEP 1: Forward to FILE_LOG_CHANNEL ───────────────
     if FILE_LOG_CHANNEL:
         try:
             await context.bot.forward_message(
@@ -361,13 +437,28 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"👥 {chat.title} (<code>{chat.id}</code>)\n"
                 f"📋 Caption: <code>{(original_caption or 'None')[:200]}</code>\n"
                 f"🆔 UniqueID: <code>{unique_id}</code>\n"
+                f"🔑 Key: <code>{caption_key}</code>\n"
                 f"🎨 Mode: {caption_mode.upper()}",
                 parse_mode="HTML",
             )
         except Exception as e:
             print(f"[LOG] {e}")
 
-    # ── STEP 2: Delete original from group ────────────────
+    # ── STEP 2: Forward to FORWARD_CHANNEL (cache) ────────
+    if FORWARD_CHANNEL and not cached:
+        try:
+            await context.bot.copy_message(
+                chat_id=int(FORWARD_CHANNEL),
+                from_chat_id=chat.id,
+                message_id=message.message_id,
+            )
+            # Cache this file
+            save_forward_cache(caption_key, unique_id, file_id, is_doc)
+            print(f"[MOVIE] Cached file to FORWARD_CHANNEL: '{caption_key}'")
+        except Exception as e:
+            print(f"[FWD_CHANNEL] {e}")
+
+    # ── STEP 3: Delete original from group ────────────────
     deleted = False
     try:
         await message.delete()
@@ -375,31 +466,29 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception as del_err:
         print(f"[MOVIE] Delete failed: {del_err}")
 
-    # ══ FIX 2: IF DELETE FAILS → ABORT ══════════════════
-    # Bot doesn't have delete permission — sending new file
-    # would cause TWO files visible in group
     if not deleted:
         await context.bot.send_message(
             chat.id,
             "⚠️ <b>Bot ko 'Delete Messages' admin permission chahiye!</b>\n\n"
-            "Bina delete permission ke file system kaam nahi kar sakta.\n"
-            "Bot ko admin banao aur 'Delete Messages' permission do.",
+            "Bina delete permission ke Movie System kaam nahi kar sakta.\n"
+            "Bot ko admin banao → Delete Messages permission do.",
             parse_mode="HTML",
         )
         return
 
-    # ── STEP 3: Send obfuscated version to group ──────────
+    # ── STEP 4: Send clean version to group ──────────────
+    # protect_content=False — users can forward freely ✅
     try:
-        send_kwargs = dict(chat_id=chat.id, protect_content=True)
+        send_kwargs = dict(chat_id=chat.id, parse_mode="HTML")
         if new_caption:
             send_kwargs["caption"] = new_caption
 
-        if is_doc:
-            sent = await context.bot.send_document(document=file_id, **send_kwargs)
+        if use_is_doc:
+            sent = await context.bot.send_document(document=use_file_id, **send_kwargs)
         else:
-            sent = await context.bot.send_video(video=file_id, **send_kwargs)
+            sent = await context.bot.send_video(video=use_file_id, **send_kwargs)
 
-        # ── STEP 4: Schedule deletion (warning already in caption) ─
+        # ── STEP 5: Schedule deletion ─────────────────────
         if del_secs > 0:
             delete_at = datetime.now() + timedelta(seconds=del_secs)
             schedule_delete(chat.id, sent.message_id, delete_at)
@@ -410,15 +499,25 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ══════════════════════════════════════════════════════════
 # AUTO-MOD HELPERS
 # ══════════════════════════════════════════════════════════
-async def _del_notify(context, chat_id, msg, text, delay=6):
+async def _del_notify(context, chat_id, msg, text, target_uid=None, delay=6):
+    """Delete offending msg + send warning with Dismiss/action buttons."""
     try:
         await msg.delete()
     except Exception:
         pass
+    # Build buttons
+    btns = []
+    if target_uid:
+        btns.append([
+            InlineKeyboardButton("🔇 Mute", callback_data=f"warn_mute_{target_uid}_3600"),
+            InlineKeyboardButton("⛔ Ban",   callback_data=f"warn_ban_{target_uid}"),
+        ])
+    btns.append([InlineKeyboardButton("✅ Dismiss", callback_data="automod_dismiss")])
+    markup = InlineKeyboardMarkup(btns)
     try:
-        n = await context.bot.send_message(chat_id, text, parse_mode="HTML")
-        await asyncio.sleep(delay)
-        await n.delete()
+        await context.bot.send_message(
+            chat_id, text, parse_mode="HTML", reply_markup=markup
+        )
     except Exception:
         pass
 
@@ -427,19 +526,20 @@ async def _apply_gaali_punishment(context, chat_id, user, strikes, message):
         await message.delete()
     except Exception:
         pass
+    btns_dismiss = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔇 Mute 1h", callback_data=f"warn_mute_{user.id}_3600"),
+        InlineKeyboardButton("⛔ Ban",     callback_data=f"warn_ban_{user.id}"),
+        InlineKeyboardButton("✅ Dismiss", callback_data="automod_dismiss"),
+    ]])
     if strikes == 1:
         reply = make_gaali_reply(chat_id)
-        n = await context.bot.send_message(
+        await context.bot.send_message(
             chat_id,
-            f"⚠️ {user.mention_html()} — <b>Pehli warning!</b>\n\n"
-            f"{reply}\n\n<i>Dobara mat karna, muting hogi!</i>",
+            f"⚠️ {user.mention_html()} — <b>Pehli gaali warning!</b>\n\n"
+            f"{reply}\n\n<i>Dobara mat karna, muting hogi! (1/3)</i>",
             parse_mode="HTML",
+            reply_markup=btns_dismiss,
         )
-        await asyncio.sleep(10)
-        try:
-            await n.delete()
-        except Exception:
-            pass
     elif strikes == 2:
         until = datetime.now() + timedelta(hours=1)
         try:
@@ -450,34 +550,29 @@ async def _apply_gaali_punishment(context, chat_id, user, strikes, message):
             )
         except Exception:
             pass
-        n = await context.bot.send_message(
+        await context.bot.send_message(
             chat_id,
             f"🔇 {user.mention_html()} — <b>2nd gaali! 1 ghante muted!</b>\n"
-            f"<i>Teesri baar permanent ban!</i>",
+            f"<i>Teesri baar permanent ban! (2/3)</i>",
             parse_mode="HTML",
+            reply_markup=btns_dismiss,
         )
-        await asyncio.sleep(10)
-        try:
-            await n.delete()
-        except Exception:
-            pass
     else:
         try:
             await context.bot.ban_chat_member(chat_id, user.id)
             reset_gaali_strikes(chat_id, user.id)
         except Exception:
             pass
-        n = await context.bot.send_message(
+        await context.bot.send_message(
             chat_id,
             f"🔨 {user.mention_html()} — <b>Permanently banned!</b>\n"
-            f"<i>Baar baar gaali allowed nahi!</i>",
+            f"<i>Baar baar gaali — ban liya! (3/3)</i>",
             parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔓 Unban",  callback_data=f"unban_{user.id}"),
+                InlineKeyboardButton("✅ Dismiss", callback_data="automod_dismiss"),
+            ]]),
         )
-        await asyncio.sleep(8)
-        try:
-            await n.delete()
-        except Exception:
-            pass
 
 # ══════════════════════════════════════════════════════════
 # CAPTCHA CALLBACK
@@ -573,6 +668,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if text:
             save_message(chat.id, user.id, text)
             push_context(chat.id, user.first_name, text)
+            # Track as potential movie request (used to tag users when file arrives)
+            if len(text) >= 2 and not text.startswith("/"):
+                save_movie_request(chat.id, user.id, user.first_name, text)
 
     # Admin self-reply learning
     if (user.id == ADMIN_ID and message.reply_to_message
@@ -587,6 +685,25 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── PM handling ────────────────────────────────────────
     if chat.type == "private":
+        # Owner sends sticker in PM → save entire sticker pack globally
+        if user.id == ADMIN_ID and message.sticker:
+            sticker = message.sticker
+            if sticker.set_name:
+                await context.bot.send_chat_action(chat.id, ChatAction.TYPING)
+                sticker_set = await context.bot.get_sticker_set(sticker.set_name)
+                file_ids = [s.file_id for s in sticker_set.stickers]
+                save_global_stickers(file_ids)
+                await message.reply_text(
+                    f"✅ <b>Sticker Pack Saved!</b>\n\n"
+                    f"📦 Pack: {sticker_set.title}\n"
+                    f"🎭 Total stickers: {len(file_ids)}\n\n"
+                    f"Bot group replies mein yahi stickers use karega! 🌸",
+                    parse_mode="HTML",
+                )
+            else:
+                save_global_stickers([sticker.file_id])
+                await message.reply_text("✅ Single sticker saved globally! 🎭")
+            return
         from handlers.admin import pm_premium_conversation
         handled = await pm_premium_conversation(update, context)
         if handled:
@@ -599,6 +716,45 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text(reply)
         return
 
+    # ── Captcha token verification ──────────────────────────
+    # New PM-based captcha: user sends 6-char code in group
+    if text and re.match(r'^[A-Z0-9]{6}$', text.strip().upper()):
+        token = text.strip().upper()
+        token_doc = get_captcha_token_doc(chat.id, user.id)
+        if token_doc and token_doc.get("token") == token:
+            expires = token_doc.get("expires_at")
+            if expires and expires > datetime.now():
+                cap_msg_id = token_doc.get("msg_id")
+                del_captcha_token(chat.id, user.id)
+                del_captcha(chat.id, user.id)
+                # Unrestrict user
+                try:
+                    await context.bot.restrict_chat_member(
+                        chat.id, user.id,
+                        permissions=ChatPermissions(
+                            can_send_messages=True, can_send_media_messages=True,
+                            can_send_other_messages=True, can_add_web_page_previews=True,
+                        ),
+                    )
+                except Exception:
+                    pass
+                # Delete their code message + captcha message
+                try: await message.delete()
+                except Exception: pass
+                if cap_msg_id:
+                    try: await context.bot.delete_message(chat.id, cap_msg_id)
+                    except Exception: pass
+                # Show welcome message
+                if get_setting(chat.id, "welcome_on", True):
+                    from core.persona import get_welcome
+                    custom = get_setting(chat.id, "welcome_msg", None)
+                    wtext = (
+                        custom.replace("{name}", user.mention_html()).replace("{group}", chat.title or "")
+                        if custom else get_welcome(user.mention_html())
+                    )
+                    await context.bot.send_message(chat.id, wtext, parse_mode="HTML")
+                return
+
     # ── Notes auto-reply (#notename) ───────────────────────
     if text and text.startswith("#"):
         note_name = text[1:].strip().lower().split()[0]
@@ -609,7 +765,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
     # ── Sticker save mode ──────────────────────────────────
-    # If admin sent sticker while sticker_pending is ON, save it
     if chat.type != "private" and message.sticker:
         if get_setting(chat.id, "sticker_pending", False):
             if await _is_user_admin(context, chat.id, user.id):
@@ -618,12 +773,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
     # ── Filter auto-reply ───────────────────────────────────
-    # Check BEFORE chatbot so filter has priority
     if chat.type != "private" and text:
         from handlers.filters import check_and_reply_filter
         filter_hit = await check_and_reply_filter(update, context)
         if filter_hit:
-            return   # filter replied — stop here
+            return
 
     # ── Conversation learning ──────────────────────────────
     if text and message.reply_to_message and message.reply_to_message.from_user:
@@ -668,12 +822,36 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_premium(chat.id) and not user_is_admin:
 
+        # Bio Link Check (PREMIUM) — antibio_on setting
+        if get_setting(chat.id, "antibio_on", False):
+            if not has_bio_perm(chat.id, user.id):
+                _bot_me = await context.bot.get_me()
+                bio_has_link = await _check_bio_links(context, user, _bot_me.username or "")
+                if bio_has_link:
+                    try: await message.delete()
+                    except Exception: pass
+                    await context.bot.send_message(
+                        chat.id,
+                        f"⚠️ {user.mention_html()} — <b>Bio mein link/username hai!</b>\n\n"
+                        f"Message karne ke 2 raaste:\n"
+                        f"1️⃣ Apni bio se link/username hatao\n"
+                        f"2️⃣ Admin se /biofree permission lo\n\n"
+                        f"<i>Abhi messaging band hai.</i>",
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton("🔓 /biofree dena hai?", callback_data=f"biofree_prompt_{user.id}"),
+                            InlineKeyboardButton("✅ Dismiss", callback_data="automod_dismiss"),
+                        ]]),
+                    )
+                    return
+
         # Anti-Link (ALL URLs)
         if get_setting(chat.id, "antilink_on", False):
             if has_url(text):
                 await _del_notify(
                     context, chat.id, message,
                     f"🔗 {user.mention_html()} — <b>Links allowed nahi!</b> 🚫",
+                    target_uid=user.id,
                 )
                 return
 
@@ -683,6 +861,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await _del_notify(
                     context, chat.id, message,
                     f"↪️ {user.mention_html()} — <b>Forwarded messages nahi!</b> 🚫",
+                    target_uid=user.id,
                 )
                 return
 
@@ -709,16 +888,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         permissions=ChatPermissions(can_send_messages=False),
                         until_date=until,
                     )
-                    n = await context.bot.send_message(
+                    await context.bot.send_message(
                         chat.id,
                         f"⚡ {user.mention_html()} — <b>Flood! 5 min muted</b> 🔇",
                         parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton("🔊 Unmute",  callback_data=f"unmute_{user.id}"),
+                            InlineKeyboardButton("✅ Dismiss", callback_data="automod_dismiss"),
+                        ]]),
                     )
-                    await asyncio.sleep(8)
-                    try:
-                        await n.delete()
-                    except Exception:
-                        pass
                 except Exception:
                     pass
                 return
@@ -728,32 +906,38 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not get_setting(chat.id, "chat_bot_on", True):
         return
 
-    # ══ REPLY LOGIC: 80% standalone, 10% reply/mention ═══
+    # ══ FIXED REPLY LOGIC ════════════════════════════════
+    # 1. User replying to ANOTHER user → NEVER interrupt their convo
+    # 2. User replying to BOT           → 30% chance respond
+    # 3. Standalone message (no reply)  → 10% chance respond
     is_text_msg = bool(message.text)
     text_lower  = text.lower() if text else ""
 
-    # Detect mention / reply-to-bot
-    mentioned = any(t in text_lower for t in BOT_TRIGGERS)
-    replied_to_bot = (
-        message.reply_to_message
-        and message.reply_to_message.from_user
-        and message.reply_to_message.from_user.id == context.bot.id
-    )
-    is_reply_or_tag = mentioned or replied_to_bot
-
     if not is_text_msg or len(text) < 2:
-        return  # Only reply to plain text
+        return
 
-    if is_reply_or_tag:
-        # Reply/mention: 10% chance
-        should_reply = random.random() < 0.10
+    mentioned  = any(t in text_lower for t in BOT_TRIGGERS)
+    reply_to   = message.reply_to_message
+    reply_user = reply_to.from_user if reply_to else None
+
+    if reply_user:
+        if reply_user.id == context.bot.id:
+            # User replied to bot directly
+            should_reply = random.random() < 0.30
+        else:
+            # User replying to another user — bot stays out
+            should_reply = False
+    elif mentioned:
+        # Someone tagged/mentioned bot triggers
+        should_reply = random.random() < 0.30
     else:
-        # Standalone message: 80% chance
-        should_reply = random.random() < 0.80
+        # Pure standalone message — 10% chance
+        should_reply = random.random() < 0.10
 
     if not should_reply:
         return
 
+    # ── Dedup: don't repeat same reply twice in a row ──────
     gaali_found, _ = contains_gaali(text)
     if gaali_found:
         reply = make_gaali_reply(chat.id)
@@ -762,7 +946,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not reply:
             reply = make_girl_reply(chat_id=chat.id)
 
-        # ── Userbot group search fallback ───────────────────────
         if not reply:
             try:
                 import os as _os
@@ -773,9 +956,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"[USERBOT FALLBACK] {_ube}")
 
     if not reply:
-        return  # nothing found anywhere — stay silent
+        return
 
-    # ── Typing delay (feels natural) ────────────────────────
+    # Skip if same as recent bot message (anti-spam)
+    if _is_bot_reply_duplicate(chat.id, reply):
+        return
+    _record_bot_reply(chat.id, reply)
+
+    # ── Typing delay (feels natural) ──────────────────────
     delay = min(0.8 + len(text) * 0.03, 3.0)
     await asyncio.sleep(random.uniform(delay * 0.6, delay))
     await context.bot.send_chat_action(chat.id, ChatAction.TYPING)
@@ -784,12 +972,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await message.reply_text(reply)
 
-        # ── Sticker after reply (20% from saved, else persona sticker) ──
-        saved_stickers = get_stickers(chat.id)
-        if saved_stickers and random.random() < 0.20:
+        # ── Sticker after reply — try global pack first, then per-chat ──
+        global_stickers = get_global_stickers()
+        saved_stickers  = get_stickers(chat.id)
+        all_stickers    = global_stickers + saved_stickers
+        if all_stickers and random.random() < 0.20:
             try:
                 await asyncio.sleep(0.4)
-                await message.reply_sticker(random.choice(saved_stickers))
+                await message.reply_sticker(random.choice(all_stickers))
             except Exception:
                 pass
         elif should_send_sticker():
@@ -801,3 +991,45 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
     except Exception as e:
         print(f"[CHAT] {e}")
+
+# ══════════════════════════════════════════════════════════
+# EDITED MESSAGE HANDLER (PREMIUM)
+# Delete any message a user edits — prevents bypass
+# ══════════════════════════════════════════════════════════
+async def edited_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.edited_message
+    if not message:
+        return
+    chat = message.chat
+    user = message.from_user
+    if not user or user.is_bot:
+        return
+    if chat.type == "private":
+        return
+    if not is_premium(chat.id):
+        return
+    if not get_setting(chat.id, "antiedit_on", False):
+        return
+
+    # Skip admins
+    try:
+        m = await context.bot.get_chat_member(chat.id, user.id)
+        if m.status in ("administrator", "creator"):
+            return
+    except Exception:
+        pass
+
+    try:
+        await message.delete()
+    except Exception:
+        return
+
+    await context.bot.send_message(
+        chat.id,
+        f"✏️ {user.mention_html()} — <b>Edited message delete ho gaya!</b>\n"
+        f"<i>Group mein messages edit karna allowed nahi.</i>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Dismiss", callback_data="automod_dismiss"),
+        ]]),
+    )
