@@ -65,8 +65,16 @@ async def _get_target(update, context, chat_id: int):
 # Main → Category → Detail + Toggle
 # ──────────────────────────────────────────────────────────
 
+# Key defaults — some settings are ON by default
+_KEY_DEFAULTS = {
+    "welcome_on":   True,
+    "goodbye_on":   True,
+    "chat_bot_on":  True,
+    "movie_on":     True,
+}
+
 def _tog_btn(chat_id, label, key, default=False, crown=""):
-    val  = get_setting(chat_id, key, default)
+    val  = get_setting(chat_id, key, _KEY_DEFAULTS.get(key, default))
     icon = "✅" if val else "❌"
     return InlineKeyboardButton(f"{icon} {label}{crown}", callback_data=f"tog_{key}")
 
@@ -110,7 +118,8 @@ def _antispam_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         rows += [
             [_tog_btn(chat_id, "🔗 Links",  "antilink_on",  False, " 👑"),
              _tog_btn(chat_id, "↩️ Fwd",    "antifwd_on",   False, " 👑")],
-            [_tog_btn(chat_id, "⚡ Raid",   "antiraid_on",  False, " 👑")],
+            [_tog_btn(chat_id, "⚡ Raid",   "antiraid_on",  False, " 👑"),
+             _tog_btn(chat_id, "🧬 Bio",    "antibio_on",   False, " 👑")],
         ]
     else:
         rows.append([InlineKeyboardButton("👑 Premium unlock!", callback_data="prem_info")])
@@ -142,7 +151,8 @@ def _advanced_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         rows += [
             [_tog_btn(chat_id, "🌊 Flood",  "flood_on",   False, " 👑"),
              _tog_btn(chat_id, "⏱ AutoDel", "autodel_on", False, " 👑")],
-            [_tog_btn(chat_id, "🔒 Captcha","captcha_on", False, " 👑")],
+            [_tog_btn(chat_id, "🔒 Captcha",  "captcha_on",  False, " 👑"),
+             _tog_btn(chat_id, "✏️ AntiEdit", "antiedit_on", False, " 👑")],
         ]
     else:
         rows.append([InlineKeyboardButton("👑 Premium unlock!", callback_data="prem_info")])
@@ -155,50 +165,65 @@ def _advanced_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(rows)
 
-_CAT_TEXT = {
-    "scat_chatbot":  (
-        "🤖 <b>Chatbot Settings</b>\n\n"
-        "Bot group mein messages pe reply karta hai.\n"
-        "• ON: AI chatbot active, keywords pe reply\n"
-        "• OFF: Bot sirf commands sunta hai\n\n"
-        "<i>Admin reply se bot seekhta bhi hai!</i>"
-    ),
-    "scat_welcome":  (
-        "👋 <b>Welcome / Goodbye Settings</b>\n\n"
-        "• <b>Welcome ON</b>: Naye member pe greet\n"
-        "• <b>Goodbye ON</b>: Left member pe farewell\n\n"
-        "Custom message set karne ke liye:\n"
-        "<code>/setwelcome {name} swagat hai {group} mein!</code>\n"
-        "<code>/setgoodbye {name} ne group chhoda!</code>"
-    ),
-    "scat_antispam": (
-        "🛡 <b>Anti-Spam Settings</b>\n\n"
-        "🆓 <b>Anti-Gaali:</b> Hindi/English abusive words detect\n"
-        "🆓 <b>Anti-Username:</b> @username promo nahi\n"
-        "👑 <b>Anti-Link:</b> Sab URLs block\n"
-        "👑 <b>Anti-Fwd:</b> Forward messages block\n"
-        "👑 <b>Anti-Raid:</b> Spam joins auto lock\n\n"
-        "<i>3 gaali → mute → ban auto</i>"
-    ),
-    "scat_movie":    (
-        "🎬 <b>Movie System Settings</b>\n\n"
-        "Group mein file bhejne pe bot auto-replace karta hai:\n"
-        "• <b>HARD:</b> Ultra stylish caption + copyright\n"
-        "• <b>SOFT:</b> Light clean caption\n"
-        "• <b>OFF:</b> Original caption rakhta hai\n\n"
-        "<i>Bot ko delete permission chahiye!</i>"
-    ),
-    "scat_advanced": (
-        "⚡ <b>Advanced Settings</b>\n\n"
-        "👑 <b>Flood Control:</b> Fast messages pe auto-mute\n"
-        "👑 <b>Auto-Delete:</b> Files X time baad delete\n"
-        "👑 <b>Captcha:</b> New members ko math solve\n"
-        "⚡ <b>Flood Limit:</b> Msgs/10sec set karo\n"
-        "⏱ <b>Auto-Del Time:</b> Delete time set karo\n"
-        "🔒 <b>Lock Types:</b> Sticker/GIF/Poll lock\n"
-        "⚠️ <b>Warn Limit:</b> Max warns before ban"
-    ),
-}
+def _get_cat_text(cat_key: str, chat_id: int) -> str:
+    """Dynamic settings text — shows current ON/OFF status."""
+    def _s(key, default=False):
+        val = get_setting(chat_id, key, _KEY_DEFAULTS.get(key, default))
+        return "✅ ON" if val else "❌ OFF"
+
+    if cat_key == "scat_chatbot":
+        return (
+            "🤖 <b>Chatbot Settings</b>\n\n"
+            f"• Chat Reply: <b>{_s('chat_bot_on', True)}</b>\n\n"
+            "Bot standalone messages pe <b>10%</b> chance se reply karta hai.\n"
+            "User-to-user conversations mein bot nahi bolta.\n\n"
+            "<i>Admin reply se bot seekhta bhi hai!</i>"
+        )
+    elif cat_key == "scat_welcome":
+        return (
+            "👋 <b>Welcome / Goodbye Settings</b>\n\n"
+            f"• Welcome Message: <b>{_s('welcome_on', True)}</b>\n"
+            f"• Goodbye Message: <b>{_s('goodbye_on', True)}</b>\n\n"
+            "Custom set karo:\n"
+            "<code>/setwelcome {name} swagat hai {group} mein!</code>\n"
+            "<code>/setgoodbye {name} ne group chhoda!</code>"
+        )
+    elif cat_key == "scat_antispam":
+        return (
+            "🛡 <b>Anti-Spam Settings</b>\n\n"
+            f"🆓 Anti-Gaali: <b>{_s('antigaali_on')}</b>\n"
+            f"🆓 Anti-Username @promo: <b>{_s('antiusername_on')}</b>\n"
+            f"👑 Anti-Link (all URLs): <b>{_s('antilink_on')}</b>\n"
+            f"👑 Anti-Forward: <b>{_s('antifwd_on')}</b>\n"
+            f"👑 Anti-Raid: <b>{_s('antiraid_on')}</b>\n"
+            f"👑 Bio Link Block: <b>{_s('antibio_on')}</b>\n\n"
+            "<i>Gaali: warn 1→mute 2→ban 3 auto</i>"
+        )
+    elif cat_key == "scat_movie":
+        cap_mode = get_setting(chat_id, "movie_caption_mode", "hard").upper()
+        return (
+            "🎬 <b>Movie System Settings</b>\n\n"
+            f"• Movie System: <b>{_s('movie_on', True)}</b>\n"
+            f"• Caption Mode: <b>{cap_mode}</b>\n\n"
+            "Modes: HARD (obfuscated) | SOFT (clean) | OFF (original)\n\n"
+            "• Files ab FORWARD ho sakti hain ✅\n"
+            "• Users who requested file → tag hote hain\n"
+            "• Forward Channel mein 24h cache hota hai\n\n"
+            "<i>Bot ko Delete Messages permission chahiye!</i>"
+        )
+    elif cat_key == "scat_advanced":
+        return (
+            "⚡ <b>Advanced Settings</b>\n\n"
+            f"👑 Flood Control: <b>{_s('flood_on')}</b>\n"
+            f"👑 Auto-Delete Files: <b>{_s('autodel_on')}</b>\n"
+            f"👑 Captcha (PM verify): <b>{_s('captcha_on')}</b>\n"
+            f"👑 Anti-Edit (del edited): <b>{_s('antiedit_on')}</b>\n\n"
+            "⚡ Flood Limit | ⏱ Del Time | 🔒 Locks | ⚠️ Warn Limit"
+        )
+    return "⚙️ Settings"
+
+# Legacy static fallback (for any code still referencing _CAT_TEXT directly)
+_CAT_TEXT: dict = {}  # deprecated — use _get_cat_text()
 
 _CAT_KBD = {
     "scat_chatbot":  _chatbot_keyboard,
@@ -1882,16 +1907,17 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             pass
 
     # ── Category Settings sub-panels ─────────────────────
-    if data in _CAT_TEXT:
+    if data in _CAT_KBD:
         kbd_fn = _CAT_KBD[data]
+        cat_text = _get_cat_text(data, chat.id)
         try:
             await query.edit_message_text(
-                _CAT_TEXT[data], parse_mode="HTML",
+                cat_text, parse_mode="HTML",
                 reply_markup=kbd_fn(chat.id),
             )
         except Exception:
             await query.message.reply_text(
-                _CAT_TEXT[data], parse_mode="HTML",
+                cat_text, parse_mode="HTML",
                 reply_markup=kbd_fn(chat.id),
             )
         return
@@ -1907,58 +1933,56 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         # Step 1: Show loading
         await query.answer()
         load_frames = [
-            "▰▱▱▱▱▱▱▱▱▱  10%",
-            "▰▰▰▱▱▱▱▱▱▱  30%",
-            "▰▰▰▰▰▰▱▱▱▱  60%",
-            "▰▰▰▰▰▰▰▰▰▱  90%",
-            "▰▰▰▰▰▰▰▰▰▰ 100%",
+            "⠋ Loading...  10%",
+            "⠸ Applying... 50%",
+            "⠴ Saving...   80%",
+            "✓ Done!      100%",
         ]
         try:
             await query.edit_message_text(
-                f"⚙️ <b>Applying Setting...</b>\n\n"
-                f"🔧 {label}\n{load_frames[0]}",
+                f"⚙️ <b>Updating: {label}...</b>\n\n{load_frames[0]}",
                 parse_mode="HTML",
             )
         except Exception:
             pass
 
         import asyncio as _aio
-        await _aio.sleep(0.25)
+        await _aio.sleep(0.2)
         try:
             await query.edit_message_text(
-                f"⚙️ <b>Applying Setting...</b>\n\n"
-                f"🔧 {label}\n{load_frames[2]}",
+                f"⚙️ <b>Updating: {label}...</b>\n\n{load_frames[2]}",
                 parse_mode="HTML",
             )
         except Exception:
             pass
-        await _aio.sleep(0.25)
+        await _aio.sleep(0.2)
 
-        # Step 2: Do the toggle
-        new_val = toggle_setting(chat.id, key, False)
+        # Step 2: Do the toggle with CORRECT defaults
+        default = _KEY_DEFAULTS.get(key, False)
+        new_val = toggle_setting(chat.id, key, default)
         icon    = "✅" if new_val else "❌"
 
-        # Step 3: Done frame
+        # Step 3: Done
         try:
             await query.edit_message_text(
-                f"⚙️ <b>Setting Updated!</b>\n\n"
-                f"{icon} <b>{label}</b> — {'ON' if new_val else 'OFF'}\n"
-                f"{load_frames[4]}",
+                f"✅ <b>Setting Updated!</b>\n\n"
+                f"{icon} <b>{label}</b> — {'ON ✅' if new_val else 'OFF ❌'}\n\n"
+                f"<i>Setting save ho gayi!</i>",
                 parse_mode="HTML",
             )
         except Exception:
             pass
-        await _aio.sleep(0.3)
+        await _aio.sleep(0.5)
 
-        # Step 4: Show updated keyboard
+        # Step 4: Show updated keyboard + dynamic text
         cat = "scat_chatbot"
-        if "welcome" in key or "goodbye" in key:   cat = "scat_welcome"
-        elif "anti" in key:                          cat = "scat_antispam"
-        elif "movie" in key or "caption" in key:    cat = "scat_movie"
-        elif any(k in key for k in ["flood","autodel","captcha","warn","lock"]): cat = "scat_advanced"
+        if "welcome" in key or "goodbye" in key:       cat = "scat_welcome"
+        elif "anti" in key or "bio" in key:             cat = "scat_antispam"
+        elif "movie" in key or "caption" in key:        cat = "scat_movie"
+        elif any(k in key for k in ["flood","autodel","captcha","edit","lock","warn"]): cat = "scat_advanced"
         try:
             await query.edit_message_text(
-                _CAT_TEXT[cat],
+                _get_cat_text(cat, chat.id),
                 parse_mode="HTML",
                 reply_markup=_CAT_KBD[cat](chat.id),
             )
@@ -2037,13 +2061,43 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
 
     elif data == "settings_main":
         prem = is_premium(chat.id)
+        status = "👑 Premium Active" if prem else "🆓 Free — /premium se upgrade karo"
         try:
             await query.edit_message_text(
                 f"⚙️ <b>Settings — {chat.title}</b>\n"
-                f"{'👑 Premium Active' if prem else '🆓 Free Group'}\n\n"
+                f"<i>{status}</i>\n\n"
                 "📌 Category choose karo:",
                 parse_mode="HTML",
                 reply_markup=_main_settings_keyboard(chat.id),
+            )
+        except Exception:
+            pass
+
+    # ── Automod Dismiss (any admin can dismiss warning msgs) ────
+    elif data == "automod_dismiss":
+        if not await _is_user_admin(context, chat.id, user.id):
+            await query.answer("❌ Sirf admins dismiss kar sakte hain!", show_alert=True)
+            return
+        await query.answer("✅ Dismissed!")
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+
+    # ── Bio Free prompt from warning message ──────────────
+    elif data.startswith("biofree_prompt_"):
+        if not await _is_user_admin(context, chat.id, user.id):
+            await query.answer("❌ Sirf admins!", show_alert=True)
+            return
+        target_uid = int(data.split("_")[2])
+        from core.db import grant_bio_perm
+        grant_bio_perm(chat.id, target_uid)
+        await query.answer(f"✅ Bio permission dedi!")
+        try:
+            await query.edit_message_text(
+                f"✅ User <code>{target_uid}</code> ko bio permission mil gayi!\n"
+                f"Ab wo group mein freely message kar sakta/sakti hai. 🌸",
+                parse_mode="HTML",
             )
         except Exception:
             pass
@@ -2247,3 +2301,131 @@ async def sticker_clear_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     clear_stickers(chat.id)
     await message.reply_text("✅ Sab stickers delete kar diye! 🗑")
+
+# ══════════════════════════════════════════════════════════
+# /SETCOMMANDS — Set bot commands list via API
+# ══════════════════════════════════════════════════════════
+
+async def setcommands_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user    = update.effective_user
+    message = update.effective_message
+    if not _is_owner(user.id):
+        await message.reply_text("❌ Sirf bot owner!")
+        return
+
+    from telegram import BotCommand, BotCommandScopeAllChatAdministrators, BotCommandScopeDefault
+
+    user_cmds = [
+        BotCommand("start",    "Bot start karo 🚀"),
+        BotCommand("help",     "Commands list 📖"),
+        BotCommand("rules",    "Group rules 📋"),
+        BotCommand("premium",  "Premium info 👑"),
+        BotCommand("id",       "User/Chat ID 🆔"),
+        BotCommand("whois",    "User info 👤"),
+        BotCommand("get",      "Note get karo 📝"),
+        BotCommand("notes",    "Notes list 📝"),
+        BotCommand("report",   "User report karo 🚨"),
+    ]
+    admin_cmds = user_cmds + [
+        BotCommand("settings",    "Group settings ⚙️"),
+        BotCommand("ban",         "User ban 🔨"),
+        BotCommand("unban",       "User unban 🔓"),
+        BotCommand("mute",        "User mute 🔇"),
+        BotCommand("unmute",      "User unmute 🔊"),
+        BotCommand("kick",        "User kick 👟"),
+        BotCommand("warn",        "User warn ⚠️"),
+        BotCommand("warns",       "Warns dekhna 📊"),
+        BotCommand("resetwarn",   "Warns reset ♻️"),
+        BotCommand("pin",         "Message pin 📌"),
+        BotCommand("del",         "Message delete 🗑"),
+        BotCommand("purge",       "Bulk delete 🗑"),
+        BotCommand("promote",     "Admin banao ⭐"),
+        BotCommand("demote",      "Admin hatao 📉"),
+        BotCommand("tagall",      "Sab tag karo 📢"),
+        BotCommand("lock",        "Content lock 🔒"),
+        BotCommand("unlock",      "Content unlock 🔓"),
+        BotCommand("filter",      "Filter add karo 🔍"),
+        BotCommand("filters",     "Filters list 🔍"),
+        BotCommand("save",        "Note save karo 💾"),
+        BotCommand("delnote",     "Note delete 🗑"),
+        BotCommand("setwelcome",  "Welcome set 👋"),
+        BotCommand("setgoodbye",  "Goodbye set 👋"),
+        BotCommand("setrules",    "Rules set 📋"),
+        BotCommand("schedule",    "Message schedule ⏰"),
+        BotCommand("slowmode",    "Slowmode set 🐢"),
+        BotCommand("floodlimit",  "Flood limit set ⚡"),
+        BotCommand("autodel",     "Auto-del time ⏱"),
+        BotCommand("warnlimit",   "Warn limit set ⚠️"),
+        BotCommand("biofree",     "Bio permission do 🧬"),
+        BotCommand("stats",       "Group stats 📊"),
+        BotCommand("topusers",    "Top users 🏆"),
+        BotCommand("adminlist",   "Admins list 👮"),
+        BotCommand("sticker",     "Sticker mode 🎭"),
+        BotCommand("stickerdone", "Sticker mode off ✅"),
+        BotCommand("stickerclear","Stickers clear 🗑"),
+        BotCommand("setcommands", "Commands set karo ⚙️"),
+    ]
+
+    wait = await message.reply_text("⚙️ <b>Setting commands...</b>", parse_mode="HTML")
+    try:
+        await context.bot.set_my_commands(user_cmds, scope=BotCommandScopeDefault())
+        await context.bot.set_my_commands(admin_cmds, scope=BotCommandScopeAllChatAdministrators())
+        await wait.edit_text(
+            f"✅ <b>Commands Set!</b>\n\n"
+            f"👤 Regular users: {len(user_cmds)} commands\n"
+            f"👮 Group admins: {len(admin_cmds)} commands\n\n"
+            f"<i>Refresh Telegram to see updated commands!</i>",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        await wait.edit_text(f"❌ Error: {e}")
+
+
+# ══════════════════════════════════════════════════════════
+# /BIOFREE — Give user bio link permission
+# ══════════════════════════════════════════════════════════
+
+async def biofree_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat    = update.effective_chat
+    user    = update.effective_user
+    message = update.effective_message
+
+    if chat.type == "private":
+        await message.reply_text("❌ Group mein use karo!")
+        return
+    if not await _is_user_admin(context, chat.id, user.id):
+        await message.reply_text("❌ Sirf admins!")
+        return
+    if not context.args:
+        await message.reply_text(
+            "❌ Use: /biofree <user_id>\n"
+            "Example: /biofree 123456789\n"
+            "Ya kisi message ko reply karke /biofree karo"
+        )
+        return
+
+    target = await _get_target(update, context, chat.id)
+    if not target:
+        try:
+            uid = int(context.args[0])
+            target_obj = type("U", (), {"id": uid, "full_name": str(uid), "mention_html": lambda: f"<code>{uid}</code>"})()
+        except Exception:
+            await message.reply_text("❌ User nahi mila!")
+            return
+        from core.db import grant_bio_perm
+        grant_bio_perm(chat.id, uid)
+        await message.reply_text(
+            f"✅ User <code>{uid}</code> ko bio permission mil gayi!\n"
+            f"Ab wo group mein freely message kar sakta/sakti hai. 🌸",
+            parse_mode="HTML",
+        )
+        return
+
+    from core.db import grant_bio_perm
+    grant_bio_perm(chat.id, target.id)
+    await message.reply_text(
+        f"✅ {target.mention_html()} ko bio permission mil gayi!\n"
+        f"Ab wo group mein freely message kar sakta/sakti hai. 🌸",
+        parse_mode="HTML",
+    )
+
