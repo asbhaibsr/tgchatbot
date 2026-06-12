@@ -47,12 +47,13 @@ def _import_handlers():
         slowmode_handler, floodlimit_handler,
         autodel_time_handler, warnlimit_handler,
         adminlist_handler,
+        setcommands_handler, biofree_handler,
     )
     from handlers.user import (
         help_handler, rules_handler,
         premium_handler, font_handler,
     )
-    from handlers.chat import movie_file_handler, message_handler
+    from handlers.chat import movie_file_handler, message_handler, edited_message_handler
     from handlers.admin import (
         string_status_handler,
         stopbroadcast_handler,
@@ -138,6 +139,8 @@ async def get_bot_app() -> Application:
         ("warnlimit",   h["warnlimit_handler"]),
         ("unlock_raid", h["unlock_raid_handler"]),
         ("adminlist",   h["adminlist_handler"]),
+        ("setcommands", h["setcommands_handler"]),
+        ("biofree",     h["biofree_handler"]),
         ("report",      h["report_handler"]),
         # ── Filter commands ──────────────────────────────
         # ── String session + Sticker commands ──────────────
@@ -191,18 +194,28 @@ async def get_bot_app() -> Application:
     ))
 
     # ── Main message handler ─────────────────────────────────
-    # FIX: Explicitly EXCLUDE documents/videos from this filter
-    # so captions of files don't trigger chatbot in groups
     application.add_handler(MessageHandler(
         (filters.TEXT | filters.CAPTION)
         & ~filters.COMMAND
-        & ~filters.Document.ALL    # ← exclude documents
-        & ~filters.VIDEO           # ← exclude videos
-        & ~filters.AUDIO           # ← exclude audio
-        & ~filters.VOICE           # ← exclude voice
-        & ~filters.ANIMATION       # ← exclude GIFs
-        & ~filters.Sticker.ALL,    # ← exclude stickers
+        & ~filters.Document.ALL
+        & ~filters.VIDEO
+        & ~filters.AUDIO
+        & ~filters.VOICE
+        & ~filters.ANIMATION
+        & ~filters.Sticker.ALL,
         h["message_handler"],
+    ))
+
+    # ── PM Sticker handler (owner sets global sticker pack) ──
+    application.add_handler(MessageHandler(
+        filters.Sticker.ALL & filters.ChatType.PRIVATE,
+        h["message_handler"],
+    ))
+
+    # ── Edited message handler (anti-edit, PREMIUM) ───────────
+    application.add_handler(MessageHandler(
+        filters.UpdateType.EDITED_MESSAGE & filters.ChatType.GROUPS,
+        h["edited_message_handler"],
     ))
 
     # Initialize the app once
