@@ -55,6 +55,7 @@ def _import_handlers():
     from handlers.chat import movie_file_handler, message_handler
     from handlers.admin import (
         string_status_handler,
+        stopbroadcast_handler,
         sticker_mode_handler, sticker_done_handler,
         sticker_list_handler, sticker_clear_handler,
     )
@@ -141,6 +142,7 @@ async def get_bot_app() -> Application:
         # ── Filter commands ──────────────────────────────
         # ── String session + Sticker commands ──────────────
         ("string",       h["string_status_handler"]),
+        ("stopbroadcast", h["stopbroadcast_handler"]),
         ("sticker",      h["sticker_mode_handler"]),
         ("stickerdone",  h["sticker_done_handler"]),
         ("stickers",     h["sticker_list_handler"]),
