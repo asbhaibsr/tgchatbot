@@ -491,3 +491,99 @@ def remove_sticker(chat_id: int, file_id: str):
 
 def clear_stickers(chat_id: int):
     stickers_col.delete_one({"chat_id": chat_id})
+
+# ════════ MOVIE REQUESTS (tag users who asked for this movie today) ════════
+movie_requests_col = db["movie_requests"]
+
+def save_movie_request(chat_id: int, user_id: int, user_name: str, query: str):
+    movie_requests_col.insert_one({
+        "chat_id": chat_id, "user_id": user_id,
+        "user_name": user_name, "query": query.lower().strip(),
+        "requested_at": datetime.now(),
+    })
+
+def get_requesters_today(chat_id: int, movie_key: str) -> list:
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    reqs = list(movie_requests_col.find({
+        "chat_id": chat_id, "requested_at": {"$gte": today_start},
+    }))
+    movie_lower = movie_key.lower()
+    seen, matched = set(), []
+    for r in reqs:
+        q = r.get("query", "")
+        if len(q) >= 2 and (q in movie_lower or movie_lower in q or movie_lower.startswith(q)):
+            uid = r["user_id"]
+            if uid not in seen:
+                seen.add(uid)
+                matched.append(r)
+    return matched[:8]
+
+# ════════ FILE FORWARD CACHE (1 day) ════════
+forward_cache_col = db["forward_cache"]
+
+def save_forward_cache(caption_key: str, unique_id: str, file_id: str, is_doc: bool):
+    forward_cache_col.update_one(
+        {"caption_key": caption_key},
+        {"$set": {
+            "caption_key": caption_key, "unique_id": unique_id,
+            "file_id": file_id, "is_doc": is_doc,
+            "cached_at": datetime.now(),
+            "expires_at": datetime.now() + timedelta(hours=24),
+        }},
+        upsert=True,
+    )
+
+def get_forward_cache(caption_key: str):
+    return forward_cache_col.find_one({
+        "caption_key": caption_key,
+        "expires_at": {"$gt": datetime.now()},
+    })
+
+# ════════ BIO PERMISSIONS ════════
+bio_perm_col = db["bio_permissions"]
+
+def grant_bio_perm(chat_id: int, user_id: int):
+    bio_perm_col.update_one(
+        {"chat_id": chat_id, "user_id": user_id},
+        {"$set": {"chat_id": chat_id, "user_id": user_id, "granted_at": datetime.now()}},
+        upsert=True,
+    )
+
+def has_bio_perm(chat_id: int, user_id: int) -> bool:
+    return bio_perm_col.find_one({"chat_id": chat_id, "user_id": user_id}) is not None
+
+def revoke_bio_perm(chat_id: int, user_id: int):
+    bio_perm_col.delete_one({"chat_id": chat_id, "user_id": user_id})
+
+# ════════ CAPTCHA TOKENS (new PM-based verification flow) ════════
+captcha_token_col = db["captcha_tokens"]
+
+def set_captcha_token(chat_id: int, user_id: int, token: str, msg_id: int):
+    captcha_token_col.update_one(
+        {"chat_id": chat_id, "user_id": user_id},
+        {"$set": {
+            "chat_id": chat_id, "user_id": user_id,
+            "token": token, "msg_id": msg_id,
+            "created_at": datetime.now(),
+            "expires_at": datetime.now() + timedelta(minutes=5),
+        }},
+        upsert=True,
+    )
+
+def get_captcha_token_doc(chat_id: int, user_id: int):
+    return captcha_token_col.find_one({"chat_id": chat_id, "user_id": user_id})
+
+def del_captcha_token(chat_id: int, user_id: int):
+    captcha_token_col.delete_one({"chat_id": chat_id, "user_id": user_id})
+
+# ════════ GLOBAL STICKER PACKS (owner sets from PM) ════════
+global_stickers_col = db["global_stickers"]
+
+def save_global_stickers(file_ids: list):
+    global_stickers_col.delete_many({})   # replace old pack
+    if file_ids:
+        global_stickers_col.insert_many([{"file_id": fid} for fid in file_ids])
+
+def get_global_stickers() -> list:
+    return [d["file_id"] for d in global_stickers_col.find({}, {"file_id": 1})]
+
