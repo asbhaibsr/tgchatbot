@@ -10,6 +10,7 @@ from core.db import (
     get_setting, is_premium,
     set_captcha, get_captcha, del_captcha,
     record_raid_join, detect_raid,
+    set_captcha_token,
 )
 from core.persona import BOT_NAME, get_welcome, get_goodbye
 
@@ -46,6 +47,43 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args and context.args[0].lower() in ("premium", "subscribe"):
         from handlers.admin import prem_start_handler
         return await prem_start_handler(update, context)
+
+    # ── /start cap_CHATID_USERID → captcha verification ───
+    if context.args and context.args[0].startswith("cap_"):
+        parts = context.args[0].split("_")
+        if len(parts) == 3:
+            try:
+                cap_chat_id = int(parts[1])
+                cap_user_id = int(parts[2])
+            except ValueError:
+                cap_chat_id = cap_user_id = 0
+
+            if cap_user_id == user.id and cap_chat_id:
+                captcha_doc = get_captcha(cap_chat_id, cap_user_id)
+                if captcha_doc:
+                    # Generate 6-char token
+                    import string as _str
+                    token = "".join(random.choices(_str.ascii_uppercase + _str.digits, k=6))
+                    msg_id = captcha_doc.get("message_id", 0)
+                    set_captcha_token(cap_chat_id, cap_user_id, token, msg_id)
+                    try:
+                        group_name = (await context.bot.get_chat(cap_chat_id)).title
+                    except Exception:
+                        group_name = "Group"
+                    await update.message.reply_text(
+                        f"🔐 <b>Verification Code</b>\n\n"
+                        f"📍 Group: <b>{group_name}</b>\n\n"
+                        f"Tera code:\n<code>{token}</code>\n\n"
+                        f"Wapas group mein jao aur sirf ye code type karo.\n"
+                        f"⏳ 5 minute mein expire hoga!",
+                        parse_mode="HTML",
+                    )
+                else:
+                    await update.message.reply_text(
+                        "⚠️ Captcha expired ya already verified hai!\n"
+                        "Group mein wapas jao.",
+                    )
+                return
 
     username_link = (
         f"@{user.username}" if user.username
@@ -186,7 +224,7 @@ async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
                 return
 
-        # Captcha (PREMIUM)
+        # Captcha (PREMIUM) — NEW: PM-based number verification
         if is_premium(chat.id) and get_setting(chat.id, "captcha_on", False):
             try:
                 await context.bot.restrict_chat_member(
@@ -195,30 +233,29 @@ async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
             except Exception:
                 pass
-            a, b   = random.randint(1, 9), random.randint(1, 9)
-            answer = str(a + b)
-            wrong  = set()
-            while len(wrong) < 3:
-                w = str(random.randint(2, 18))
-                if w != answer:
-                    wrong.add(w)
-            opts = [answer] + list(wrong)
-            random.shuffle(opts)
-            markup = InlineKeyboardMarkup([[
-                InlineKeyboardButton(o, callback_data=f"captcha_{member.id}_{o}")
-                for o in opts
-            ]])
-            sent = await message.reply_text(
-                f"👋 {member.mention_html()} — welcome!\n\n"
-                f"🤖 <b>Prove karo tum bot nahi ho:</b>\n\n"
-                f"<b>{a} + {b} = ?</b>\n\n"
-                f"⏳ 2 min mein jawab do, warna <b>kick!</b>",
-                parse_mode="HTML", reply_markup=markup,
-            )
-            set_captcha(chat.id, member.id, answer, sent.message_id)
 
-            async def _auto_kick(cid, uid, mid):
-                await asyncio.sleep(120)
+            me = await context.bot.get_me()
+            start_param = f"cap_{chat.id}_{member.id}"
+
+            sent = await message.reply_text(
+                f"👋 {member.mention_html()} — Welcome!\n\n"
+                f"🔐 <b>Verify karo to chat karo!</b>\n\n"
+                f"Step 1️⃣  → Niche 'Verify Now' button dabao\n"
+                f"Step 2️⃣  → Bot se code lo (PM mein)\n"
+                f"Step 3️⃣  → Wapas aao aur code type karo\n\n"
+                f"⏳ <b>5 min</b> mein verify nahi hua → <b>Kick!</b>",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "✅ Verify Now",
+                        url=f"https://t.me/{me.username}?start={start_param}",
+                    )
+                ]]),
+            )
+            set_captcha(chat.id, member.id, "pending", sent.message_id)
+
+            async def _auto_kick_new(cid, uid, mid):
+                await asyncio.sleep(300)   # 5 min
                 if get_captcha(cid, uid):
                     del_captcha(cid, uid)
                     try:
@@ -232,7 +269,7 @@ async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     except Exception:
                         pass
 
-            asyncio.create_task(_auto_kick(chat.id, member.id, sent.message_id))
+            asyncio.create_task(_auto_kick_new(chat.id, member.id, sent.message_id))
             continue
 
         # Welcome
@@ -318,7 +355,10 @@ _ADMIN_EXACT = {
     "close", "settings_main",
     "settings_flood", "settings_autodel",
     "settings_warn", "settings_locks",
+    "automod_dismiss",   # NEW: dismiss warning messages
 }
+
+_ADMIN_PREFIX_EXTRA = ("biofree_prompt_",)
 
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -330,7 +370,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await captcha_callback_handler(update, context)
 
     # Admin callbacks
-    if data in _ADMIN_EXACT or any(data.startswith(p) for p in _ADMIN_PREFIXES):
+    if data in _ADMIN_EXACT or any(data.startswith(p) for p in _ADMIN_PREFIXES) or any(data.startswith(p) for p in _ADMIN_PREFIX_EXTRA):
         from handlers.admin import admin_callback_handler
         return await admin_callback_handler(update, context)
 
