@@ -103,17 +103,17 @@ def _welcome_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 def _antispam_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     prem = is_premium(chat_id)
     rows = [
-        [_tog_btn(chat_id, "Anti-Gaali", "antigaali_on", False, " 🆓"),
-         _tog_btn(chat_id, "Anti-Username", "antiusername_on", False, " 🆓")],
+        [_tog_btn(chat_id, "🚫 Gaali",   "antigaali_on",      False, " 🆓"),
+         _tog_btn(chat_id, "👤 Username", "antiusername_on",   False, " 🆓")],
     ]
     if prem:
         rows += [
-            [_tog_btn(chat_id, "Anti-Link",  "antilink_on",  False, " 👑"),
-             _tog_btn(chat_id, "Anti-Fwd",   "antifwd_on",   False, " 👑")],
-            [_tog_btn(chat_id, "Anti-Raid",  "antiraid_on",  False, " 👑")],
+            [_tog_btn(chat_id, "🔗 Links",  "antilink_on",  False, " 👑"),
+             _tog_btn(chat_id, "↩️ Fwd",    "antifwd_on",   False, " 👑")],
+            [_tog_btn(chat_id, "⚡ Raid",   "antiraid_on",  False, " 👑")],
         ]
     else:
-        rows.append([InlineKeyboardButton("👑 Premium mein unlock!", callback_data="prem_info")])
+        rows.append([InlineKeyboardButton("👑 Premium unlock!", callback_data="prem_info")])
     rows.append([InlineKeyboardButton("« Back", callback_data="settings_main")])
     return InlineKeyboardMarkup(rows)
 
@@ -140,18 +140,18 @@ def _advanced_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     rows = []
     if prem:
         rows += [
-            [_tog_btn(chat_id, "Flood Control", "flood_on",  False, " 👑"),
-             _tog_btn(chat_id, "Auto-Delete",   "autodel_on", False, " 👑")],
-            [_tog_btn(chat_id, "Captcha",        "captcha_on", False, " 👑")],
+            [_tog_btn(chat_id, "🌊 Flood",  "flood_on",   False, " 👑"),
+             _tog_btn(chat_id, "⏱ AutoDel", "autodel_on", False, " 👑")],
+            [_tog_btn(chat_id, "🔒 Captcha","captcha_on", False, " 👑")],
         ]
     else:
-        rows.append([InlineKeyboardButton("👑 Premium mein unlock!", callback_data="prem_info")])
+        rows.append([InlineKeyboardButton("👑 Premium unlock!", callback_data="prem_info")])
     rows += [
         [InlineKeyboardButton("⚡ Flood Limit",  callback_data="settings_flood"),
-         InlineKeyboardButton("⏱ Auto-Del Time", callback_data="settings_autodel")],
-        [InlineKeyboardButton("🔒 Lock Types",    callback_data="settings_locks"),
-         InlineKeyboardButton("⚠️ Warn Limit",    callback_data="settings_warn")],
-        [InlineKeyboardButton("« Back", callback_data="settings_main")],
+         InlineKeyboardButton("⏱ Del Time",      callback_data="settings_autodel")],
+        [InlineKeyboardButton("🔒 Lock Types",   callback_data="settings_locks"),
+         InlineKeyboardButton("⚠️ Warn Limit",   callback_data="settings_warn")],
+        [InlineKeyboardButton("« Back",          callback_data="settings_main")],
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -537,26 +537,47 @@ async def warn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reason = " ".join(context.args[1:]) if context.args and len(context.args) > 1 else "No reason"
     limit  = get_setting(chat.id, "warn_limit", 3)
     n      = add_warn(chat.id, target.id, reason, user.id)
+    # ── Warn progress bar ─────────────────────────────────
+    filled = "🔴" * n + "⚪" * (limit - n)
+    bar    = f"{filled}  {n}/{limit}"
+
     if n >= limit:
-        await message.reply_text(
-            f"⚠️ {target.mention_html()} — <b>Warning {n}/{limit}</b>\n"
-            f"📝 {reason}\n\n🔨 <b>Limit reached — Banning!</b>",
-            parse_mode="HTML",
+        warn_text = (
+            f"╔══════════════════╗\n"
+            f"  🚨 <b>AUTO BAN</b>\n"
+            f"╚══════════════════╝\n\n"
+            f"👤 {target.mention_html()}\n"
+            f"📝 Reason: <i>{reason}</i>\n"
+            f"⚠️ Warns: {bar}\n\n"
+            f"🔨 <b>Warn limit paar! Ban ho gaya.</b>"
         )
+        await message.reply_text(warn_text, parse_mode="HTML")
         try:
             await context.bot.ban_chat_member(chat.id, target.id)
             reset_warns(chat.id, target.id)
         except Exception:
             pass
     else:
-        await message.reply_text(
-            f"⚠️ {target.mention_html()} — <b>Warning {n}/{limit}</b>\n"
-            f"📝 Reason: <i>{reason}</i>",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Reset", callback_data=f"resetwarn_{target.id}")
-            ]]),
+        danger = "\n🔴 <b>AGLA WARN = AUTO BAN!</b>" if n == limit - 1 else ""
+        warn_text = (
+            f"╔══════════════════╗\n"
+            f"  ⚠️ <b>WARNING #{n}</b>\n"
+            f"╚══════════════════╝\n\n"
+            f"👤 {target.mention_html()}\n"
+            f"📝 Reason: <i>{reason}</i>\n"
+            f"⚠️ Warns: {bar}{danger}"
         )
+        warn_kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Dismiss",    callback_data=f"warn_dismiss_{target.id}"),
+                InlineKeyboardButton("🔇 Mute 1h",   callback_data=f"warn_mute_{target.id}_3600"),
+            ],
+            [
+                InlineKeyboardButton("⛔ Ban",        callback_data=f"warn_ban_{target.id}"),
+                InlineKeyboardButton("🔄 Reset Warns",callback_data=f"resetwarn_{target.id}"),
+            ],
+        ])
+        await message.reply_text(warn_text, parse_mode="HTML", reply_markup=warn_kb)
 
 async def warns_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat    = update.effective_chat
@@ -1277,65 +1298,160 @@ async def id_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ══════════════════════════════════════════════════════════
-# BROADCAST
+# ══════════════════════════════════════════════════════════
+# BROADCAST  (with dedup + progress + stop support)
 # ══════════════════════════════════════════════════════════
 
+# Module-level flag — works within one broadcast session
+_BC: dict = {"running": False, "sent": 0, "failed": 0, "total": 0}
+
 async def broadcast_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global _BC
     user    = update.effective_user
     message = update.effective_message
     if not _is_owner(user.id):
         return
+
+    # ── Already running? ──────────────────────────────────
+    if _BC["running"]:
+        await message.reply_text(
+            f"⚠️ Broadcast already chal raha hai!\n"
+            f"✅ {_BC['sent']} | ❌ {_BC['failed']} | Total: {_BC['total']}\n\n"
+            f"/stopbroadcast se rok sakte ho.",
+        )
+        return
+
     args = list(context.args or [])
     mode = "users"
     if args and args[0] in ("-g", "-groups"):
         mode = "groups"; args = args[1:]
     elif args and args[0] in ("-all", "-a"):
         mode = "all"; args = args[1:]
+
     if not args and not message.reply_to_message:
         await message.reply_text(
-            "❌ Use:\n/broadcast <msg> — all users\n"
-            "/broadcast -g <msg> — all groups\n"
-            "/broadcast -all <msg> — both\n"
-            "Ya kisi message ko reply karke /broadcast"
+            "❌ <b>Usage:</b>\n"
+            "/broadcast msg — all users\n"
+            "/broadcast -g msg — all groups\n"
+            "/broadcast -all msg — users + groups\n"
+            "Ya reply karke: /broadcast",
+            parse_mode="HTML",
         )
         return
+
     bcast_msg  = message.reply_to_message
     bcast_text = " ".join(args) if args else None
-    sent = failed = 0
-    notif = await message.reply_text(f"📢 Broadcasting ({mode})...")
 
-    async def send_one(cid):
-        nonlocal sent, failed
+    # ── Build UNIQUE target list ──────────────────────────
+    targets: list[int] = []
+    seen: set[int]     = set()
+
+    if mode in ("users", "all"):
+        for u in get_all_users():
+            uid = u.get("user_id")
+            if uid and uid not in seen:
+                seen.add(uid); targets.append(uid)
+
+    if mode in ("groups", "all"):
+        for g in get_all_groups():
+            gid = g.get("chat_id")
+            if gid and gid not in seen:
+                seen.add(gid); targets.append(gid)
+
+    total = len(targets)
+    if total == 0:
+        await message.reply_text("📭 Koi target nahi mila!")
+        return
+
+    # ── Init state ────────────────────────────────────────
+    _BC.update({"running": True, "sent": 0, "failed": 0, "total": total})
+
+    notif = await message.reply_text(
+        f"📢 <b>Broadcast Start!</b>\n"
+        f"👥 Targets: <b>{total}</b> | Mode: <b>{mode}</b>\n\n"
+        f"▱▱▱▱▱▱▱▱▱▱  0%\n"
+        f"/stopbroadcast se rok sakte ho",
+        parse_mode="HTML",
+    )
+
+    # ── Send loop ─────────────────────────────────────────
+    async def send_one(cid: int):
         try:
             if bcast_msg:
-                await context.bot.forward_message(
-                    chat_id=cid, from_chat_id=bcast_msg.chat_id,
+                await context.bot.copy_message(          # copy instead of forward (no "forwarded" tag)
+                    chat_id=cid,
+                    from_chat_id=bcast_msg.chat_id,
                     message_id=bcast_msg.message_id,
                 )
             else:
                 await context.bot.send_message(
-                    chat_id=cid, text=bcast_text, parse_mode="HTML",
-                    disable_web_page_preview=True,
+                    chat_id=cid, text=bcast_text,
+                    parse_mode="HTML", disable_web_page_preview=True,
                 )
-            sent += 1
+            _BC["sent"] += 1
         except Exception:
-            failed += 1
-        await asyncio.sleep(0.05)
+            _BC["failed"] += 1
+        await asyncio.sleep(0.08)   # ~12 msgs/sec — safe rate
 
-    if mode in ("users", "all"):
-        for u in get_all_users():
-            await send_one(u["user_id"])
-    if mode in ("groups", "all"):
-        for g in get_all_groups():
-            await send_one(g["chat_id"])
+    UPDATE_EVERY = 20   # update progress bar every N sends
 
+    for i, cid in enumerate(targets):
+        if not _BC["running"]:
+            break
+        await send_one(cid)
+
+        if (i + 1) % UPDATE_EVERY == 0 or (i + 1) == total:
+            pct   = int((i + 1) / total * 100)
+            done  = pct // 10
+            bar   = "▰" * done + "▱" * (10 - done)
+            try:
+                await notif.edit_text(
+                    f"📢 <b>Broadcasting...</b>\n"
+                    f"👥 {i+1}/{total}\n\n"
+                    f"{bar}  {pct}%\n"
+                    f"✅ {_BC['sent']} | ❌ {_BC['failed']}\n\n"
+                    f"/stopbroadcast",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+
+    stopped = not _BC["running"]
+    _BC["running"] = False
+
+    # ── Final report ──────────────────────────────────────
+    status = "⛔ Stopped!" if stopped else "✅ Done!"
     try:
         await notif.edit_text(
-            f"📢 <b>Broadcast Done!</b>\n✅ Sent: <b>{sent}</b>\n❌ Failed: <b>{failed}</b>",
+            f"📢 <b>Broadcast {status}</b>\n\n"
+            f"▰▰▰▰▰▰▰▰▰▰  100%\n\n"
+            f"✅ Sent:   <b>{_BC['sent']}</b>\n"
+            f"❌ Failed: <b>{_BC['failed']}</b>\n"
+            f"👥 Total:  <b>{_BC['total']}</b>",
             parse_mode="HTML",
         )
     except Exception:
         pass
+
+
+async def stopbroadcast_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/stopbroadcast — Stop ongoing broadcast."""
+    global _BC
+    user    = update.effective_user
+    message = update.effective_message
+    if not _is_owner(user.id):
+        return
+    if not _BC["running"]:
+        await message.reply_text("ℹ️ Koi broadcast chal nahi raha.")
+        return
+    _BC["running"] = False
+    await message.reply_text(
+        f"⛔ <b>Broadcast Stopped!</b>\n\n"
+        f"✅ Sent:   <b>{_BC['sent']}</b>\n"
+        f"❌ Failed: <b>{_BC['failed']}</b>\n"
+        f"👥 Total:  <b>{_BC['total']}</b>",
+        parse_mode="HTML",
+    )
 
 # ══════════════════════════════════════════════════════════
 # PREMIUM MANAGEMENT
@@ -1659,6 +1775,56 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("✅ Warns reset!")
         await query.edit_message_reply_markup(reply_markup=None)
 
+    # ── Warn action: Dismiss ──────────────────────────────
+    elif data.startswith("warn_dismiss_"):
+        if not await _is_user_admin(context, chat.id, user.id):
+            await query.answer("❌ Sirf admins!", show_alert=True)
+            return
+        await query.answer("✅ Warning dismissed!")
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+    # ── Warn action: Mute ────────────────────────────────
+    elif data.startswith("warn_mute_"):
+        if not await _is_user_admin(context, chat.id, user.id):
+            await query.answer("❌ Sirf admins!", show_alert=True)
+            return
+        parts    = data.split("_")
+        target_id = int(parts[2])
+        dur_secs  = int(parts[3]) if len(parts) > 3 else 3600
+        try:
+            from datetime import timedelta
+            until = datetime.now() + timedelta(seconds=dur_secs)
+            await context.bot.restrict_chat_member(
+                chat.id, target_id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=until,
+            )
+            hrs = dur_secs // 3600
+            await query.answer(f"🔇 Muted for {hrs}h!")
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("✅ Unmute", callback_data=f"unmute_{target_id}"),
+            ]]))
+        except Exception as e:
+            await query.answer(f"❌ {e}", show_alert=True)
+
+    # ── Warn action: Ban ─────────────────────────────────
+    elif data.startswith("warn_ban_"):
+        if not await _is_user_admin(context, chat.id, user.id):
+            await query.answer("❌ Sirf admins!", show_alert=True)
+            return
+        target_id = int(data.split("_")[2])
+        try:
+            await context.bot.ban_chat_member(chat.id, target_id)
+            await query.answer("⛔ Banned!")
+            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔓 Unban", callback_data=f"unban_{target_id}"),
+            ]]))
+        except Exception as e:
+            await query.answer(f"❌ {e}", show_alert=True)
+
     # ── Premium Approve ──────────────────────────────────
     elif data.startswith("prem_a_"):
         if user.id != ADMIN_ID:
@@ -1730,23 +1896,72 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             )
         return
 
-    # ── Toggle settings ──────────────────────────────────
+    # ── Toggle settings (with loading animation) ────────
     if data.startswith("tog_"):
         if not await _is_user_admin(context, chat.id, user.id):
             await query.answer("❌ Sirf admins!", show_alert=True)
             return
-        key     = data[4:]
+        key   = data[4:]
+        label = key.replace("_on","").replace("_"," ").strip().title()
+
+        # Step 1: Show loading
+        await query.answer()
+        load_frames = [
+            "▰▱▱▱▱▱▱▱▱▱  10%",
+            "▰▰▰▱▱▱▱▱▱▱  30%",
+            "▰▰▰▰▰▰▱▱▱▱  60%",
+            "▰▰▰▰▰▰▰▰▰▱  90%",
+            "▰▰▰▰▰▰▰▰▰▰ 100%",
+        ]
+        try:
+            await query.edit_message_text(
+                f"⚙️ <b>Applying Setting...</b>\n\n"
+                f"🔧 {label}\n{load_frames[0]}",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+        import asyncio as _aio
+        await _aio.sleep(0.25)
+        try:
+            await query.edit_message_text(
+                f"⚙️ <b>Applying Setting...</b>\n\n"
+                f"🔧 {label}\n{load_frames[2]}",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        await _aio.sleep(0.25)
+
+        # Step 2: Do the toggle
         new_val = toggle_setting(chat.id, key, False)
         icon    = "✅" if new_val else "❌"
-        label   = key.replace("_on","").replace("_"," ").strip().title()
-        await query.answer(f"{icon} {label} {'ON' if new_val else 'OFF'}")
+
+        # Step 3: Done frame
+        try:
+            await query.edit_message_text(
+                f"⚙️ <b>Setting Updated!</b>\n\n"
+                f"{icon} <b>{label}</b> — {'ON' if new_val else 'OFF'}\n"
+                f"{load_frames[4]}",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        await _aio.sleep(0.3)
+
+        # Step 4: Show updated keyboard
         cat = "scat_chatbot"
         if "welcome" in key or "goodbye" in key:   cat = "scat_welcome"
         elif "anti" in key:                          cat = "scat_antispam"
         elif "movie" in key or "caption" in key:    cat = "scat_movie"
         elif any(k in key for k in ["flood","autodel","captcha","warn","lock"]): cat = "scat_advanced"
         try:
-            await query.edit_message_reply_markup(reply_markup=_CAT_KBD[cat](chat.id))
+            await query.edit_message_text(
+                _CAT_TEXT[cat],
+                parse_mode="HTML",
+                reply_markup=_CAT_KBD[cat](chat.id),
+            )
         except Exception:
             pass
         return
