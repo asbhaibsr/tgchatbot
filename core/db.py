@@ -1,4 +1,5 @@
 import os
+import re
 from pymongo import MongoClient, DESCENDING
 from datetime import datetime, timedelta
 import random
@@ -508,14 +509,39 @@ def get_requesters_today(chat_id: int, movie_key: str) -> list:
         "chat_id": chat_id, "requested_at": {"$gte": today_start},
     }))
     movie_lower = movie_key.lower()
+
+    # ── Extract meaningful words from movie name (skip filler words) ──
+    _SKIP = {"the", "and", "or", "of", "in", "a", "an", "to", "is", "it",
+              "ke", "ka", "ki", "ko", "se", "hai", "tha", "thi", "ho", "na"}
+    movie_words = [
+        w for w in re.split(r'\s+', movie_lower)
+        if len(w) >= 3 and w not in _SKIP
+    ]
+
     seen, matched = set(), []
     for r in reqs:
         q = r.get("query", "")
-        if len(q) >= 2 and (q in movie_lower or movie_lower in q or movie_lower.startswith(q)):
+        if len(q) < 2:
+            continue
+        q_lower = q.lower()
+
+        # Method 1: direct substring (e.g. "pushpa 2" in "pushpa 2 the rule")
+        is_match = (q_lower in movie_lower or movie_lower in q_lower)
+
+        # Method 2: word-overlap — any movie word found in query text
+        # Handles "pushpa 2 chahiye", "yaar dunki upload karo", etc.
+        if not is_match and movie_words:
+            is_match = any(
+                re.search(r'\b' + re.escape(w) + r'\b', q_lower)
+                for w in movie_words
+            )
+
+        if is_match:
             uid = r["user_id"]
             if uid not in seen:
                 seen.add(uid)
                 matched.append(r)
+
     return matched[:8]
 
 # ════════ FILE FORWARD CACHE (1 day) ════════
@@ -572,6 +598,13 @@ def set_captcha_token(chat_id: int, user_id: int, token: str, msg_id: int):
 
 def get_captcha_token_doc(chat_id: int, user_id: int):
     return captcha_token_col.find_one({"chat_id": chat_id, "user_id": user_id})
+
+def get_captcha_token_by_user(user_id: int):
+    """Find any pending captcha for this user across ALL groups — used for PM verification."""
+    return captcha_token_col.find_one({
+        "user_id": user_id,
+        "expires_at": {"$gt": datetime.now()},   # only non-expired
+    })
 
 def del_captcha_token(chat_id: int, user_id: int):
     captcha_token_col.delete_one({"chat_id": chat_id, "user_id": user_id})
