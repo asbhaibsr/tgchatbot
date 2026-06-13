@@ -70,18 +70,38 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         group_name = (await context.bot.get_chat(cap_chat_id)).title
                     except Exception:
                         group_name = "Group"
+
+                    # Show loading animation
+                    lmsg = await update.message.reply_text(
+                        f"⋘ 𝑙𝑜𝑎𝑑𝑖𝑛𝑔... ⋙\n{'█▒▒▒▒▒▒▒▒▒'} 10%"
+                    )
+                    import asyncio as _a; await _a.sleep(0.4)
+                    try:
+                        await lmsg.edit_text(f"⋘ 𝑔𝑒𝑛𝑒𝑟𝑎𝑡𝑖𝑛𝑔... ⋙\n{'████████▒▒'} 80%")
+                    except Exception:
+                        pass
+                    await _a.sleep(0.3)
+                    try:
+                        await lmsg.delete()
+                    except Exception:
+                        pass
+
                     await update.message.reply_text(
-                        f"🔐 <b>Verification Code</b>\n\n"
+                        f"🔐 <b>Verification Code</b>\n"
+                        f"-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
                         f"📍 Group: <b>{group_name}</b>\n\n"
-                        f"Tera code:\n<code>{token}</code>\n\n"
-                        f"Wapas group mein jao aur sirf ye code type karo.\n"
-                        f"⏳ 5 minute mein expire hoga!",
+                        f"✦ Tera verification code:\n\n"
+                        f"<code>{token}</code>\n\n"
+                        f"↷ Is code ko <b>copy karo</b> aur\n"
+                        f"  <b>yahi bot mein paste karke send karo</b>!\n\n"
+                        f"⏳ Code <b>5 minute</b> mein expire ho jayega!\n"
+                        f"{'█▒▒▒▒▒▒▒▒▒'} ⏳ Starting...",
                         parse_mode="HTML",
                     )
                 else:
                     await update.message.reply_text(
                         "⚠️ Captcha expired ya already verified hai!\n"
-                        "Group mein wapas jao.",
+                        "Group mein wapas jao aur dobara join karo.",
                     )
                 return
 
@@ -238,16 +258,19 @@ async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             start_param = f"cap_{chat.id}_{member.id}"
 
             sent = await message.reply_text(
-                f"👋 {member.mention_html()} — Welcome!\n\n"
-                f"🔐 <b>Verify karo to chat karo!</b>\n\n"
-                f"Step 1️⃣  → Niche 'Verify Now' button dabao\n"
-                f"Step 2️⃣  → Bot se code lo (PM mein)\n"
-                f"Step 3️⃣  → Wapas aao aur code type karo\n\n"
+                f"↷✦ <b>Verification Required!</b>\n"
+                f"-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+                f"👋 {member.mention_html()} — Swagat hai!\n\n"
+                f"🔐 <b>Pehle verify karo, phir chat karo!</b>\n\n"
+                f"Step 1️⃣ → <b>'Solve Captcha'</b> button dabao\n"
+                f"Step 2️⃣ → Bot PM mein code milega\n"
+                f"Step 3️⃣ → Wahi code <b>bot ko hi bhejo</b> (group mein nahi)\n"
+                f"Step 4️⃣ → Bot group link dega — join karo!\n\n"
                 f"⏳ <b>5 min</b> mein verify nahi hua → <b>Kick!</b>",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton(
-                        "✅ Verify Now",
+                        "🔐 Solve Captcha",
                         url=f"https://t.me/{me.username}?start={start_param}",
                     )
                 ]]),
