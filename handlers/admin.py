@@ -31,6 +31,26 @@ BOT_NAME       = "ᴀꜱ ɢʀᴏᴜᴘ ʙᴏᴛ"
 # HELPERS
 # ══════════════════════════════════════════════════════════
 
+def _progress_bar(pct: int, length: int = 10) -> str:
+    """Fancy block progress bar — e.g. ████▒▒▒▒▒▒ 40%"""
+    filled = round(pct / 100 * length)
+    empty  = length - filled
+    return f"{'█' * filled}{'▒' * empty} {pct}%"
+
+def _warn_bar(n: int, limit: int) -> str:
+    """Warn progress bar with colored blocks."""
+    pct    = int(n / limit * 100) if limit else 0
+    filled = round(n / limit * 10) if limit else 0
+    empty  = 10 - filled
+    color  = "🟥" if pct >= 80 else ("🟧" if pct >= 50 else "🟨")
+    return f"{color * filled}{'⬜' * empty}  {n}/{limit}"
+
+_LOAD_STEPS = [
+    ("⋘ 𝑙𝑜𝑎𝑑𝑖𝑛𝑔 𝑑𝑎𝑡𝑎... ⋙",   _progress_bar(10)),
+    ("⋘ 𝑃𝑙𝑒𝑎𝑠𝑒 𝑤𝑎𝑖𝑡... ⋙",   _progress_bar(50)),
+    ("⋘ 𝑠𝑎𝑣𝑖𝑛𝑔... ⋙",         _progress_bar(80)),
+]
+
 def _is_owner(user_id: int) -> bool:
     return user_id == ADMIN_ID
 
@@ -103,26 +123,34 @@ def _chatbot_keyboard(chat_id: int) -> InlineKeyboardMarkup:
 
 def _welcome_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
-        [_tog_btn(chat_id, "Welcome Message",  "welcome_on",  True)],
-        [_tog_btn(chat_id, "Goodbye Message",  "goodbye_on",  True)],
+        [_tog_btn(chat_id, "👋 Welcome Message", "welcome_on",  True)],
+        [_tog_btn(chat_id, "👋 Goodbye Message", "goodbye_on",  True)],
+        [
+            InlineKeyboardButton("👁 Welcome dekhein", callback_data="wel_view_welcome"),
+            InlineKeyboardButton("🗑 Reset",           callback_data="wel_reset_welcome"),
+        ],
+        [
+            InlineKeyboardButton("👁 Goodbye dekhein", callback_data="wel_view_goodbye"),
+            InlineKeyboardButton("🗑 Reset",            callback_data="wel_reset_goodbye"),
+        ],
         [InlineKeyboardButton("« Back", callback_data="settings_main")],
     ])
 
 def _antispam_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     prem = is_premium(chat_id)
     rows = [
-        [_tog_btn(chat_id, "🚫 Gaali",   "antigaali_on",      False, " 🆓"),
-         _tog_btn(chat_id, "👤 Username", "antiusername_on",   False, " 🆓")],
+        [_tog_btn(chat_id, "🚫 Anti-Gaali",          "antigaali_on",    False, " 🆓")],
+        [_tog_btn(chat_id, "👤 Anti-Username @promo", "antiusername_on", False, " 🆓")],
     ]
     if prem:
         rows += [
-            [_tog_btn(chat_id, "🔗 Links",  "antilink_on",  False, " 👑"),
-             _tog_btn(chat_id, "↩️ Fwd",    "antifwd_on",   False, " 👑")],
-            [_tog_btn(chat_id, "⚡ Raid",   "antiraid_on",  False, " 👑"),
-             _tog_btn(chat_id, "🧬 Bio",    "antibio_on",   False, " 👑")],
+            [_tog_btn(chat_id, "🔗 Anti-Link (URLs)",   "antilink_on",  False, " 👑")],
+            [_tog_btn(chat_id, "↩️ Anti-Forward",        "antifwd_on",   False, " 👑")],
+            [_tog_btn(chat_id, "⚡ Anti-Raid",            "antiraid_on",  False, " 👑")],
+            [_tog_btn(chat_id, "🧬 Bio Link Block",       "antibio_on",   False, " 👑")],
         ]
     else:
-        rows.append([InlineKeyboardButton("👑 Premium unlock!", callback_data="prem_info")])
+        rows.append([InlineKeyboardButton("👑 Premium unlock karo!", callback_data="prem_info")])
     rows.append([InlineKeyboardButton("« Back", callback_data="settings_main")])
     return InlineKeyboardMarkup(rows)
 
@@ -133,13 +161,23 @@ def _movie_keyboard(chat_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton("👑 Premium Feature — Subscribe!", callback_data="prem_info")],
             [InlineKeyboardButton("« Back", callback_data="settings_main")],
         ])
-    cap_mode = get_setting(chat_id, "movie_caption_mode", "hard").upper()
+    cap_mode  = get_setting(chat_id, "movie_caption_mode", "hard").upper()
     cap_icons = {"HARD": "🔒 HARD", "SOFT": "✏️ SOFT", "OFF": "🚫 OFF"}
+    del_secs  = get_setting(chat_id, "autodel_time", 3600)
+    hours     = del_secs // 3600
+    mins      = (del_secs % 3600) // 60
+    del_str   = f"{hours}h {mins}m" if (hours and mins) else (f"{hours}h" if hours else f"{mins}m")
     return InlineKeyboardMarkup([
-        [_tog_btn(chat_id, "Movie System", "movie_on", True, " 👑")],
+        [_tog_btn(chat_id, "🎬 Movie System",       "movie_on",          True,  " 👑")],
+        [_tog_btn(chat_id, "🔔 Request Tagging",    "movie_request_on",  True,  " 👑")],
         [InlineKeyboardButton(
-            f"🎬 Caption: {cap_icons.get(cap_mode, cap_mode)} — Click to cycle",
+            f"🎞 Caption: {cap_icons.get(cap_mode, cap_mode)} — tap to cycle",
             callback_data="cycle_movie_caption",
+        )],
+        [_tog_btn(chat_id, "⏱ Auto-Delete Files", "autodel_on",         False, " 👑")],
+        [InlineKeyboardButton(
+            f"🕐 Del Time: {del_str} — /autodel <sec>",
+            callback_data="settings_autodel",
         )],
         [InlineKeyboardButton("« Back", callback_data="settings_main")],
     ])
@@ -149,19 +187,24 @@ def _advanced_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     rows = []
     if prem:
         rows += [
-            [_tog_btn(chat_id, "🌊 Flood",  "flood_on",   False, " 👑"),
-             _tog_btn(chat_id, "⏱ AutoDel", "autodel_on", False, " 👑")],
-            [_tog_btn(chat_id, "🔒 Captcha",  "captcha_on",  False, " 👑"),
-             _tog_btn(chat_id, "✏️ AntiEdit", "antiedit_on", False, " 👑")],
+            [_tog_btn(chat_id, "🌊 Flood Control",  "flood_on",   False, " 👑")],
+            [_tog_btn(chat_id, "⏱ Auto-Delete",     "autodel_on", False, " 👑")],
+            [_tog_btn(chat_id, "🔒 Captcha Verify", "captcha_on", False, " 👑")],
+            [_tog_btn(chat_id, "✏️ Anti-Edit",       "antiedit_on", False, " 👑")],
         ]
     else:
-        rows.append([InlineKeyboardButton("👑 Premium unlock!", callback_data="prem_info")])
+        rows.append([InlineKeyboardButton("👑 Premium unlock karo!", callback_data="prem_info")])
+    flood_limit = get_setting(chat_id, "flood_limit", 5)
+    warn_limit  = get_setting(chat_id, "warn_limit",  3)
+    del_secs    = get_setting(chat_id, "autodel_time", 3600)
+    hours = del_secs // 3600; mins = (del_secs % 3600) // 60
+    del_str = f"{hours}h {mins}m" if (hours and mins) else (f"{hours}h" if hours else f"{mins}m")
     rows += [
-        [InlineKeyboardButton("⚡ Flood Limit",  callback_data="settings_flood"),
-         InlineKeyboardButton("⏱ Del Time",      callback_data="settings_autodel")],
-        [InlineKeyboardButton("🔒 Lock Types",   callback_data="settings_locks"),
-         InlineKeyboardButton("⚠️ Warn Limit",   callback_data="settings_warn")],
-        [InlineKeyboardButton("« Back",          callback_data="settings_main")],
+        [InlineKeyboardButton(f"⚡ Flood Limit: {flood_limit} msgs — /floodlimit <n>", callback_data="settings_flood")],
+        [InlineKeyboardButton(f"🕐 Del Time: {del_str} — /autodel <sec>",             callback_data="settings_autodel")],
+        [InlineKeyboardButton("🔒 Lock Types (sticker/gif/poll)",                     callback_data="settings_locks")],
+        [InlineKeyboardButton(f"⚠️ Warn Limit: {warn_limit} warns — /warnlimit <n>",  callback_data="settings_warn")],
+        [InlineKeyboardButton("« Back", callback_data="settings_main")],
     ]
     return InlineKeyboardMarkup(rows)
 
@@ -173,52 +216,74 @@ def _get_cat_text(cat_key: str, chat_id: int) -> str:
 
     if cat_key == "scat_chatbot":
         return (
-            "🤖 <b>Chatbot Settings</b>\n\n"
+            "🤖 <b>Chatbot Settings</b>\n"
+            "-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
             f"• Chat Reply: <b>{_s('chat_bot_on', True)}</b>\n\n"
-            "Bot standalone messages pe <b>10%</b> chance se reply karta hai.\n"
-            "User-to-user conversations mein bot nahi bolta.\n\n"
-            "<i>Admin reply se bot seekhta bhi hai!</i>"
+            "📊 <b>Reply Rate:</b>\n"
+            "▸ Normal messages → <b>80%</b> reply chance\n"
+            "▸ User→User tag/reply → <b>10%</b> chance (bot seekhta bhi hai)\n"
+            "▸ Bulk messages → sirf <b>1 in 3</b> pe reply\n\n"
+            "<i>Bot har conversation se patterns seekhta rehta hai!</i>"
         )
     elif cat_key == "scat_welcome":
         return (
-            "👋 <b>Welcome / Goodbye Settings</b>\n\n"
+            "👋 <b>Welcome / Goodbye Settings</b>\n"
+            "-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
             f"• Welcome Message: <b>{_s('welcome_on', True)}</b>\n"
             f"• Goodbye Message: <b>{_s('goodbye_on', True)}</b>\n\n"
-            "Custom set karo:\n"
+            "✏️ <b>Custom set karo:</b>\n"
             "<code>/setwelcome {name} swagat hai {group} mein!</code>\n"
-            "<code>/setgoodbye {name} ne group chhoda!</code>"
+            "<code>/setgoodbye {name} ne group chhoda!</code>\n\n"
+            "<i>👁 View/Reset buttons se current message dekho ya hatao.</i>"
         )
     elif cat_key == "scat_antispam":
         return (
-            "🛡 <b>Anti-Spam Settings</b>\n\n"
-            f"🆓 Anti-Gaali: <b>{_s('antigaali_on')}</b>\n"
+            "🛡 <b>Anti-Spam Settings</b>\n"
+            "-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+            f"🆓 Anti-Gaali:          <b>{_s('antigaali_on')}</b>\n"
             f"🆓 Anti-Username @promo: <b>{_s('antiusername_on')}</b>\n"
-            f"👑 Anti-Link (all URLs): <b>{_s('antilink_on')}</b>\n"
-            f"👑 Anti-Forward: <b>{_s('antifwd_on')}</b>\n"
-            f"👑 Anti-Raid: <b>{_s('antiraid_on')}</b>\n"
-            f"👑 Bio Link Block: <b>{_s('antibio_on')}</b>\n\n"
-            "<i>Gaali: warn 1→mute 2→ban 3 auto</i>"
+            f"👑 Anti-Link (URLs):    <b>{_s('antilink_on')}</b>\n"
+            f"👑 Anti-Forward:        <b>{_s('antifwd_on')}</b>\n"
+            f"👑 Anti-Raid:           <b>{_s('antiraid_on')}</b>\n"
+            f"👑 Bio Link Block:      <b>{_s('antibio_on')}</b>\n\n"
+            "⚠️ <b>Gaali System:</b>\n"
+            "1st → Warning  |  2nd → Mute 1h  |  3rd → Auto Ban"
         )
     elif cat_key == "scat_movie":
         cap_mode = get_setting(chat_id, "movie_caption_mode", "hard").upper()
+        del_secs = get_setting(chat_id, "autodel_time", 3600)
+        hours = del_secs // 3600; mins = (del_secs % 3600) // 60
+        del_str = f"{hours}h {mins}m" if (hours and mins) else (f"{hours}h" if hours else f"{mins}m")
         return (
-            "🎬 <b>Movie System Settings</b>\n\n"
-            f"• Movie System: <b>{_s('movie_on', True)}</b>\n"
-            f"• Caption Mode: <b>{cap_mode}</b>\n\n"
-            "Modes: HARD (obfuscated) | SOFT (clean) | OFF (original)\n\n"
-            "• Files ab FORWARD ho sakti hain ✅\n"
-            "• Users who requested file → tag hote hain\n"
-            "• Forward Channel mein 24h cache hota hai\n\n"
+            "🎬 <b>Movie System Settings</b>\n"
+            "-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+            f"• Movie System:     <b>{_s('movie_on', True)}</b>\n"
+            f"• Request Tagging:  <b>{_s('movie_request_on', True)}</b>\n"
+            f"• Caption Mode:     <b>{cap_mode}</b>\n"
+            f"• Auto-Delete:      <b>{_s('autodel_on')}</b>\n"
+            f"• Del Time:         <b>{del_str}</b>\n\n"
+            "📋 <b>Caption Modes:</b>\n"
+            "🔒 HARD = Obfuscated title  |  ✏️ SOFT = Clean  |  🚫 OFF = Original\n\n"
+            "🔔 <b>Request Tagging ON:</b>\n"
+            "Jab koi movie ka naam likhta hai → file aate hi bot tag karta hai!\n\n"
+            "• Files freely FORWARD ho sakti hain ✅\n"
             "<i>Bot ko Delete Messages permission chahiye!</i>"
         )
     elif cat_key == "scat_advanced":
+        flood_limit = get_setting(chat_id, "flood_limit", 5)
+        warn_limit  = get_setting(chat_id, "warn_limit",  3)
+        del_secs    = get_setting(chat_id, "autodel_time", 3600)
+        hours = del_secs // 3600; mins = (del_secs % 3600) // 60
+        del_str = f"{hours}h {mins}m" if (hours and mins) else (f"{hours}h" if hours else f"{mins}m")
         return (
-            "⚡ <b>Advanced Settings</b>\n\n"
-            f"👑 Flood Control: <b>{_s('flood_on')}</b>\n"
-            f"👑 Auto-Delete Files: <b>{_s('autodel_on')}</b>\n"
-            f"👑 Captcha (PM verify): <b>{_s('captcha_on')}</b>\n"
-            f"👑 Anti-Edit (del edited): <b>{_s('antiedit_on')}</b>\n\n"
-            "⚡ Flood Limit | ⏱ Del Time | 🔒 Locks | ⚠️ Warn Limit"
+            "⚡ <b>Advanced Settings</b>\n"
+            "-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+            f"👑 Flood Control:    <b>{_s('flood_on')}</b>  (limit: {flood_limit} msgs)\n"
+            f"👑 Auto-Delete:      <b>{_s('autodel_on')}</b>  (time: {del_str})\n"
+            f"👑 Captcha Verify:   <b>{_s('captcha_on')}</b>\n"
+            f"👑 Anti-Edit:        <b>{_s('antiedit_on')}</b>\n"
+            f"⚠️ Warn Limit:       <b>{warn_limit} warns → ban</b>\n\n"
+            "💡 <i>Niche buttons se values change karo.</i>"
         )
     return "⚙️ Settings"
 
@@ -615,9 +680,13 @@ async def warns_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"  {i+1}. {r.get('reason','No reason')}"
         for i, r in enumerate(reasons)
     ) or "  None"
+    bar = _warn_bar(n, limit)
     await message.reply_text(
-        f"⚠️ <b>{target.full_name}</b> — Warns: <b>{n}/{limit}</b>\n\n"
-        f"Reasons:\n{r_text}",
+        f"⚠️ <b>Warn Report</b>\n"
+        f"-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+        f"👤 {target.mention_html()}\n"
+        f"📊 {bar}\n\n"
+        f"📝 <b>Reasons:</b>\n{r_text}",
         parse_mode="HTML",
     )
 
@@ -1922,7 +1991,7 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             )
         return
 
-    # ── Toggle settings (with loading animation) ────────
+    # ── Toggle settings (with fancy loading animation) ──────
     if data.startswith("tog_"):
         if not await _is_user_admin(context, chat.id, user.id):
             await query.answer("❌ Sirf admins!", show_alert=True)
@@ -1930,55 +1999,55 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         key   = data[4:]
         label = key.replace("_on","").replace("_"," ").strip().title()
 
-        # Step 1: Show loading
         await query.answer()
-        load_frames = [
-            "⠋ Loading...  10%",
-            "⠸ Applying... 50%",
-            "⠴ Saving...   80%",
-            "✓ Done!      100%",
-        ]
+        # Step 1 — loading start
         try:
             await query.edit_message_text(
-                f"⚙️ <b>Updating: {label}...</b>\n\n{load_frames[0]}",
+                f"⚙️ <b>Updating: {label}</b>\n\n"
+                f"⋘ 𝑙𝑜𝑎𝑑𝑖𝑛𝑔 𝑑𝑎𝑡𝑎... ⋙\n{_progress_bar(10)}",
                 parse_mode="HTML",
             )
         except Exception:
             pass
 
         import asyncio as _aio
-        await _aio.sleep(0.2)
+        await _aio.sleep(0.25)
+
+        # Step 2 — applying
         try:
             await query.edit_message_text(
-                f"⚙️ <b>Updating: {label}...</b>\n\n{load_frames[2]}",
+                f"⚙️ <b>Updating: {label}</b>\n\n"
+                f"⋘ 𝑠𝑎𝑣𝑖𝑛𝑔... ⋙\n{_progress_bar(80)}",
                 parse_mode="HTML",
             )
         except Exception:
             pass
         await _aio.sleep(0.2)
 
-        # Step 2: Do the toggle with CORRECT defaults
+        # Step 3 — Do the actual toggle
         default = _KEY_DEFAULTS.get(key, False)
         new_val = toggle_setting(chat.id, key, default)
         icon    = "✅" if new_val else "❌"
 
-        # Step 3: Done
+        # Step 4 — Done confirmation
         try:
             await query.edit_message_text(
-                f"✅ <b>Setting Updated!</b>\n\n"
+                f"✅ <b>Setting Updated!</b>\n"
+                f"-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
                 f"{icon} <b>{label}</b> — {'ON ✅' if new_val else 'OFF ❌'}\n\n"
-                f"<i>Setting save ho gayi!</i>",
+                f"{_progress_bar(100)}\n\n"
+                f"<i>✔ Setting save ho gayi!</i>",
                 parse_mode="HTML",
             )
         except Exception:
             pass
-        await _aio.sleep(0.5)
+        await _aio.sleep(0.6)
 
-        # Step 4: Show updated keyboard + dynamic text
+        # Step 5 — Restore category panel
         cat = "scat_chatbot"
         if "welcome" in key or "goodbye" in key:       cat = "scat_welcome"
         elif "anti" in key or "bio" in key:             cat = "scat_antispam"
-        elif "movie" in key or "caption" in key:        cat = "scat_movie"
+        elif "movie" in key or "caption" in key or "request" in key: cat = "scat_movie"
         elif any(k in key for k in ["flood","autodel","captcha","edit","lock","warn"]): cat = "scat_advanced"
         try:
             await query.edit_message_text(
@@ -1995,34 +2064,77 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
         if not await _is_user_admin(context, chat.id, user.id):
             await query.answer("❌ Sirf admins!", show_alert=True)
             return
-        modes   = ["off", "soft", "hard"]
-        current = get_setting(chat.id, "movie_caption_mode", "hard")
-        idx     = modes.index(current) if current in modes else 2
+        modes    = ["off", "soft", "hard"]
+        current  = get_setting(chat.id, "movie_caption_mode", "hard")
+        idx      = modes.index(current) if current in modes else 2
         new_mode = modes[(idx + 1) % len(modes)]
         set_setting(chat.id, "movie_caption_mode", new_mode)
-        await query.answer(f"🎬 Caption mode: {new_mode.upper()}")
+        await query.answer(f"🎬 Caption mode: {new_mode.upper()} ✅")
         try:
-            await query.edit_message_reply_markup(
-                reply_markup=_settings_keyboard(chat.id)
+            await query.edit_message_text(
+                _get_cat_text("scat_movie", chat.id),
+                parse_mode="HTML",
+                reply_markup=_movie_keyboard(chat.id),
             )
         except Exception:
             pass
 
-    # ── Settings sub-menus ───────────────────────────────
+    # ── Welcome / Goodbye — View & Reset ─────────────────
+    elif data in ("wel_view_welcome", "wel_view_goodbye"):
+        which   = "welcome" if "welcome" in data else "goodbye"
+        key_msg = f"{which}_msg"
+        default = (
+            "👋 {name} ne group join kiya! 🎉\n<b>{group}</b> mein swagat hai!"
+            if which == "welcome" else
+            "👋 {name} ne group chhoda. Alvida! 👋"
+        )
+        msg = get_setting(chat.id, key_msg, default) or default
+        await query.answer()
+        try:
+            await query.message.reply_text(
+                f"📄 <b>Current {which.title()} Message:</b>\n\n{msg}\n\n"
+                f"<i>Change karne ke liye: /{which.replace('goodbye','setgoodbye').replace('welcome','setwelcome')} &lt;text&gt;</i>",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+
+    elif data in ("wel_reset_welcome", "wel_reset_goodbye"):
+        if not await _is_user_admin(context, chat.id, user.id):
+            await query.answer("❌ Sirf admins!", show_alert=True)
+            return
+        which = "welcome" if "welcome" in data else "goodbye"
+        set_setting(chat.id, f"{which}_msg", None)
+        await query.answer(f"✅ {which.title()} message reset — default chal raha hai!")
+        try:
+            await query.edit_message_text(
+                _get_cat_text("scat_welcome", chat.id),
+                parse_mode="HTML",
+                reply_markup=_welcome_keyboard(chat.id),
+            )
+        except Exception:
+            pass
+
+    # ── Settings sub-menus (inline popup) ───────────────────
     elif data == "settings_flood":
-        await query.message.reply_text(
-            "⚡ <b>Flood Limit:</b>\nUse: /floodlimit <number>\nDefault: 5 msgs/10s",
-            parse_mode="HTML",
+        fl = get_setting(chat.id, "flood_limit", 5)
+        await query.answer(
+            f"⚡ Flood Limit: {fl} msgs/10s\nChange: /floodlimit <number>",
+            show_alert=True,
         )
     elif data == "settings_autodel":
-        await query.message.reply_text(
-            "⏱ <b>Auto-Delete Time:</b>\nUse: /autodel <seconds>\nExample: /autodel 3600",
-            parse_mode="HTML",
+        ds = get_setting(chat.id, "autodel_time", 3600)
+        h  = ds // 3600; m = (ds % 3600) // 60
+        ts = f"{h}h {m}m" if (h and m) else (f"{h}h" if h else f"{m}m")
+        await query.answer(
+            f"⏱ Auto-Delete Time: {ts}\nChange: /autodel <seconds>\nExample: /autodel 3600",
+            show_alert=True,
         )
     elif data == "settings_warn":
-        await query.message.reply_text(
-            "⚠️ <b>Warn Limit:</b>\nUse: /warnlimit <number>\nDefault: 3 warns → ban",
-            parse_mode="HTML",
+        wl = get_setting(chat.id, "warn_limit", 3)
+        await query.answer(
+            f"⚠️ Warn Limit: {wl} warns → ban\nChange: /warnlimit <number>",
+            show_alert=True,
         )
     elif data == "settings_locks":
         locked = get_setting(chat.id, "locked_types", []) or []
