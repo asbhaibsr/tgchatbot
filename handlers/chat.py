@@ -18,6 +18,7 @@ from core.db import (
     save_forward_cache, get_forward_cache,
     has_bio_perm, grant_bio_perm,
     get_captcha_token_doc, del_captcha_token, set_captcha_token,
+    get_captcha_token_by_user,
     get_global_stickers, save_global_stickers,
 )
 from core.brain import (
@@ -36,6 +37,32 @@ BIO_CACHE_TTL = 3600  # 1 hour
 
 # In-memory dedup: last N bot messages per chat to prevent repetition
 _last_bot_msgs: dict = {}  # chat_id → [last 5 replies]
+
+# Bulk message throttle: track message rate per chat
+_bulk_tracker: dict = {}  # chat_id → {"count": int, "last_msg": datetime, "reply_idx": int}
+
+
+def _bulk_should_reply(chat_id: int, window_sec: float = 6.0) -> bool:
+    """
+    Bulk mode guard — agar 6 sec mein 3+ messages aaye to
+    sirf har 3rd message pe reply karne ki permission deta hai.
+    Returns True → proceed with reply probability check.
+    Returns False → skip (bulk throttle).
+    """
+    now = datetime.now()
+    tr = _bulk_tracker.get(chat_id)
+    if tr is None or (now - tr["last_msg"]).total_seconds() > window_sec:
+        # Fresh window — reset counter
+        _bulk_tracker[chat_id] = {"count": 1, "last_msg": now, "reply_idx": 0}
+        return True
+    tr["count"] += 1
+    tr["last_msg"] = now
+    if tr["count"] < 3:
+        # Not bulk yet — allow
+        return True
+    # Bulk mode: rotate — allow every 3rd message only
+    tr["reply_idx"] = (tr["reply_idx"] + 1) % 3
+    return tr["reply_idx"] == 0
 
 # ══════════════════════════════════════════════════════════
 # ANTI-GAALI — 200+ words + leetspeak
@@ -282,9 +309,8 @@ def obfuscate_caption_soft(raw: str, del_info: str = "") -> str:
     if q_str:
         lines.append(f"📊 {q_str}")
     lines.append("━━━━━━━━━━━━━━━━━━━")
-    lines.append("⛔ Forward Prohibited")
     if del_info:
-        lines.append(f"⏰ {del_info}")
+        lines.append(del_info)   # del_info already has ⏰ prefix — no double emoji
     return "\n".join(lines)
 
 def obfuscate_caption_hard(raw: str, bot_uname: str = "", del_info: str = "") -> str:
@@ -305,9 +331,8 @@ def obfuscate_caption_hard(raw: str, bot_uname: str = "", del_info: str = "") ->
     if obf_quals:
         lines.append(f"📊 {obf_quals}")
         lines.append("━━━━━━━━━━━━━━━━━━━━━")
-    lines.append("⛔ Forward/Share Prohibited")
     if del_info:
-        lines.append(f"⏰ {del_info}")
+        lines.append(del_info)   # del_info already has ⏰ prefix — no double emoji
     if bot_uname:
         lines.append(f"🤖 {bot_uname}")
     return "\n".join(lines)
@@ -363,8 +388,7 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     store_file_hash(chat.id, unique_id, file_id, original_caption, user.id)
 
     # ── Get bot info ──────────────────────────────────────
-    bot_me    = await context.bot.get_me()
-    bot_uname = f"@{bot_me.username}" if bot_me.username else ""
+    bot_uname = "@asbhai_bsr"   # fixed credit username in captions
 
     # ── Extract movie name for cache key ──────────────────
     movie_name, _, _ = _extract_info(original_caption)
@@ -381,7 +405,11 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         use_is_doc  = is_doc
 
     # ── Get today's requesters for tagging ────────────────
-    requesters = get_requesters_today(chat.id, caption_key) if caption_key else []
+    request_tagging_on = get_setting(chat.id, "movie_request_on", True)
+    requesters = (
+        get_requesters_today(chat.id, caption_key)
+        if (caption_key and request_tagging_on) else []
+    )
     # Filter out the uploader
     requesters = [r for r in requesters if r["user_id"] != user.id]
 
@@ -413,10 +441,14 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f'<a href="tg://user?id={r["user_id"]}">{r["user_name"]}</a> '
             for r in requesters[:6]
         )
-        tag_line = f"\n\n🔔 {tags}"
+        tag_line = (
+            f"\n\n🔔 <b>Aapki maangi file aa gayi!</b>\n"
+            f"{tags}\n"
+            f"💾 <i>Jaldi Saved Messages mein save karo — delete ho jayegi!</i>"
+        )
 
     if del_info and caption_mode != "off" and delete_time_str:
-        save_reminder = f"\n\n⚠️ Ye file {delete_time_str} tak group mein rahegi!\nApne Saved Messages mein save karo!"
+        save_reminder = ""   # del_info already shown in caption — no duplicate warning
     else:
         save_reminder = ""
 
@@ -477,9 +509,13 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     # ── STEP 4: Send clean version to group ──────────────
-    # protect_content=False — users can forward freely ✅
+    # protect_content=False so users can freely forward the file ✅
     try:
-        send_kwargs = dict(chat_id=chat.id, parse_mode="HTML")
+        send_kwargs = dict(
+            chat_id=chat.id,
+            parse_mode="HTML",
+            protect_content=False,   # ← explicitly allow forwarding
+        )
         if new_caption:
             send_kwargs["caption"] = new_caption
 
@@ -492,6 +528,15 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if del_secs > 0:
             delete_at = datetime.now() + timedelta(seconds=del_secs)
             schedule_delete(chat.id, sent.message_id, delete_at)
+
+        # ── STEP 6: Playful save reminder (roast) ─────────
+        # Only when autodel is ON — nudge users to save before it's gone
+        if del_secs > 0 and _ROAST_MSGS and random.random() < 0.40:
+            try:
+                await asyncio.sleep(1.5)
+                await context.bot.send_message(chat.id, random.choice(_ROAST_MSGS))
+            except Exception:
+                pass
 
     except Exception as e:
         print(f"[MOVIE] Send error: {e}")
@@ -685,6 +730,54 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── PM handling ────────────────────────────────────────
     if chat.type == "private":
+        # ── PM Captcha: user sends 6-char code in bot PM ────
+        if text and re.match(r'^[A-Z0-9]{6}$', text.strip().upper()):
+            pm_token = text.strip().upper()
+            pm_tok_doc = get_captcha_token_by_user(user.id)
+            if pm_tok_doc and pm_tok_doc.get("token") == pm_token:
+                cap_chat_id = pm_tok_doc["chat_id"]
+                cap_msg_id  = pm_tok_doc.get("msg_id", 0)
+                del_captcha_token(cap_chat_id, user.id)
+                del_captcha(cap_chat_id, user.id)
+                # Unrestrict user in group
+                try:
+                    await context.bot.restrict_chat_member(
+                        cap_chat_id, user.id,
+                        permissions=ChatPermissions(
+                            can_send_messages=True, can_send_media_messages=True,
+                            can_send_other_messages=True, can_add_web_page_previews=True,
+                        ),
+                    )
+                except Exception:
+                    pass
+                # Delete captcha message in group
+                if cap_msg_id:
+                    try: await context.bot.delete_message(cap_chat_id, cap_msg_id)
+                    except Exception: pass
+                # Get group invite link
+                try:
+                    invite = await context.bot.export_chat_invite_link(cap_chat_id)
+                    group_chat = await context.bot.get_chat(cap_chat_id)
+                    group_name = group_chat.title or "Group"
+                except Exception:
+                    invite = None
+                    group_name = "Group"
+
+                kbd = (
+                    InlineKeyboardMarkup([[InlineKeyboardButton(f"➡️ {group_name}", url=invite)]])
+                    if invite else None
+                )
+                await message.reply_text(
+                    f"✅ <b>Verification Successful!</b>\n"
+                    f"-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+                    f"{'█' * 10} 100%\n\n"
+                    f"🎉 Aap ab <b>{group_name}</b> mein message kar sakte ho!\n"
+                    f"Niche button se group mein wapas jao 👇",
+                    parse_mode="HTML",
+                    reply_markup=kbd,
+                )
+                return
+
         # Owner sends sticker in PM → save entire sticker pack globally
         if user.id == ADMIN_ID and message.sticker:
             sticker = message.sticker
@@ -907,9 +1000,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ══ FIXED REPLY LOGIC ════════════════════════════════
-    # 1. User replying to ANOTHER user → NEVER interrupt their convo
-    # 2. User replying to BOT           → 30% chance respond
-    # 3. Standalone message (no reply)  → 10% chance respond
+    # 1. Bulk guard — agar 3+ msgs 6s mein aaye to sirf 1-in-3 pe reply
+    # 2. User reply to ANOTHER user   → 10% (bot sikhta hai pattern bhi)
+    # 3. User reply to BOT            → 80%
+    # 4. Bot trigger / mention        → 80%
+    # 5. Standalone message           → 80%
     is_text_msg = bool(message.text)
     text_lower  = text.lower() if text else ""
 
@@ -920,19 +1015,23 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_to   = message.reply_to_message
     reply_user = reply_to.from_user if reply_to else None
 
-    if reply_user:
-        if reply_user.id == context.bot.id:
-            # User replied to bot directly
-            should_reply = random.random() < 0.30
-        else:
-            # User replying to another user — bot stays out
-            should_reply = False
-    elif mentioned:
-        # Someone tagged/mentioned bot triggers
-        should_reply = random.random() < 0.30
-    else:
-        # Pure standalone message — 10% chance
+    # ── Bulk throttle: bahut saare messages aaye to 1-in-3 pass karo ──
+    if not _bulk_should_reply(chat.id):
+        return
+
+    if reply_user and reply_user.id != context.bot.id:
+        # User kisi dusre user ko reply/tag kar raha hai → 10% chance
+        # (Bot pattern seekhta rahe, kabhi kabhi participate kare)
         should_reply = random.random() < 0.10
+    elif reply_user and reply_user.id == context.bot.id:
+        # User ne bot ko directly reply kiya → 80%
+        should_reply = random.random() < 0.80
+    elif mentioned:
+        # Bot ka naam/trigger liya → 80%
+        should_reply = random.random() < 0.80
+    else:
+        # Normal standalone message → 80%
+        should_reply = random.random() < 0.80
 
     if not should_reply:
         return
