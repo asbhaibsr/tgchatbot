@@ -131,23 +131,29 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.effective_chat.type == "private":
         await update.message.reply_text(
-            f"<b>Heyy {user.first_name}! 🌸</b>\n\n"
-            f"Main hoon <b>{BOT_NAME}</b>~\n"
-            "Tera powerful Telegram group manager!\n\n"
-            "🆓 <b>Free:</b> Anti-Gaali • Notes • AI Chatbot • Warn/Ban/Mute\n"
-            "👑 <b>Premium:</b> Anti-Link • Anti-Raid • Movie System • Captcha • Analytics\n\n"
-            "👇 Group mein add karo aur /settings se configure karo!",
+            f"<b>Aye {user.first_name}! Aa gaye? 😏</b>\n\n"
+            f"Main hoon <b>{BOT_NAME}</b> — group ka digital thanedar! 🚔\n"
+            "Gaali = ban, rules tod = ban, attitude dikha = bhi ban 😂\n\n"
+            "🆓 <b>Free mein milega:</b>\n"
+            "  🤬 Anti-Gaali (200+ words) • 📝 Notes • 🤖 AI Chat\n"
+            "  ⚠️ Warn/Ban/Mute/Kick • 👋 Welcome/Goodbye\n\n"
+            "👑 <b>Premium (serious wale ke liye):</b>\n"
+            "  🔗 Anti-Link • 🛡 Anti-Raid • 🎬 Movie System\n"
+            "  🤖 Captcha • 📊 Analytics • ⏰ Scheduler\n\n"
+            "👇 Group mein add karo, /settings se setup karo!\n"
+            "<i>Bot ko admin dena mat bhulna, warna main toh hoon par kuch karunga nahi 😤</i>",
             parse_mode="HTML",
             reply_markup=markup,
         )
     else:
         await update.message.reply_text(
-            f"<b>Heyy! Main hoon {BOT_NAME} 🌸</b>\n"
-            "Admin commands ke liye /help karo!",
+            f"<b>Haan bhai! Main hoon {BOT_NAME} 🌸</b>\n"
+            "Admin commands ke liye /help karo!\n"
+            "<i>(PM mein aao, wahan sab bataunga 😉)</i>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    "💬 PM for help",
+                    "💬 PM mein Help lo",
                     url=f"https://t.me/{me.username}?start=help",
                 )
             ]]),
@@ -180,15 +186,15 @@ async def my_chat_member_handler(update: Update, context: ContextTypes.DEFAULT_T
             await context.bot.send_message(
                 chat_id=chat.id,
                 text=(
-                    f"<b>Heyy sab! Main hoon {BOT_NAME} 🌸</b>\n\n"
-                    "Ab is group ka protection mere haath mein hai!\n\n"
-                    "🔧 Setup:\n"
-                    "• /settings → sab features toggle karo\n"
-                    "• /setwelcome → custom welcome\n"
-                    "• /setrules → group rules\n"
-                    "• /help → poori commands list\n"
-                    "• /premium → premium features\n\n"
-                    "<i>Note: Bot ko admin banao taaki sab features kaam karein!</i>"
+                    f"<b>Salam Doston! Main hoon {BOT_NAME} 🌸</b>\n\n"
+                    "Ab is group ki raksha mere haath mein hai!\n"
+                    "Koi bhi shekhchilli baazi nahi chalegi yahan 😤\n\n"
+                    "🔧 <b>Setup (5 min mein karo):</b>\n"
+                    "• /settings → sab features ON/OFF karo\n"
+                    "• /setwelcome → apna welcome message\n"
+                    "• /setrules → group ke kanoon likhao\n"
+                    "• /help → poori commands list\n\n"
+                    "<i>⚠️ Pehle mujhe admin banao, warna main sirf tamasha dekhunga 😂</i>"
                 ),
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([[
@@ -231,10 +237,12 @@ async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except Exception:
                     pass
                 await message.reply_text(
-                    "🚨 <b>RAID DETECTED!</b>\n\n"
-                    "5+ users joined in 30 seconds!\n"
-                    "Group temporarily <b>LOCKED</b> 🔒\n\n"
-                    "Admins — /unlock_raid type karo jab safe ho!",
+                    "🚨 <b>RAID ALERT! RAID ALERT! 🚨</b>\n\n"
+                    "Bhai ek saath itne log? Yeh group hai ya metro station? 😤\n"
+                    "5+ janwar 30 seconds mein ghus aaye!\n"
+                    "Group <b>LOCK</b> kar diya — ab koi nahi bolega! 🔒\n\n"
+                    "Admins — /unlock_raid type karo jab sab safe ho!\n"
+                    "<i>(Pehle check karo ki sach mein raid hai ya bas school ki chutti aayi hai 😂)</i>",
                     parse_mode="HTML",
                 )
                 await send_log(
@@ -377,6 +385,7 @@ async def unlock_raid_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 # Prefixes that go to admin_callback_handler
 _ADMIN_PREFIXES = (
     "unban_", "unmute_", "resetwarn_",
+    "warn_dismiss_", "warn_mute_", "warn_ban_",   # ← FIX: warn action buttons
     "prem_a_", "prem_r_",
     "tog_", "cycle_",
     "settings_", "scat_",
