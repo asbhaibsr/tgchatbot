@@ -244,7 +244,7 @@ async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
                 return
 
-        # Captcha (PREMIUM) — NEW: PM-based number verification
+        # Captcha (PREMIUM) — Inline A-Z button captcha
         if is_premium(chat.id) and get_setting(chat.id, "captcha_on", False):
             try:
                 await context.bot.restrict_chat_member(
@@ -254,28 +254,40 @@ async def new_member_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             except Exception:
                 pass
 
-            me = await context.bot.get_me()
-            start_param = f"cap_{chat.id}_{member.id}"
+            # Generate captcha word — no import from handlers.chat (circular import risk)
+            _cons = "BCDFGHJKLMNPQRSTVWXYZ"; _vow = "AEIOU"
+            cap_word = "".join(
+                random.choice(_vow if i % 2 else _cons) for i in range(4)
+            )
+
+            # Build keyboard inline
+            _letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            _rows = [
+                [InlineKeyboardButton(ch, callback_data=f"ci_{chat.id}_{member.id}_{ch}")
+                 for ch in _letters[i:i+7]]
+                for i in range(0, 26, 7)
+            ]
+            _rows.append([
+                InlineKeyboardButton("⌫ Del",     callback_data=f"cc_{chat.id}_{member.id}"),
+                InlineKeyboardButton("✅ Submit",  callback_data=f"cs_{chat.id}_{member.id}"),
+            ])
+            _dw = "  ".join(cap_word)
+            _bl = "  ".join("▢" for _ in cap_word)
+            cap_text = (
+                f"🔐 <b>CAPTCHA VERIFY</b>\n"
+                f"-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+                f"Word dekho, buttons se type karo:\n\n"
+                f"<code>[ {_dw} ]</code>\n\n"
+                f"Tumhara input: <code>[ {_bl} ]</code>\n\n"
+                f"💡 Sahi type karo phir ✅ Submit dabao!"
+            )
 
             sent = await message.reply_text(
-                f"↷✦ <b>Verification Required!</b>\n"
-                f"-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
-                f"👋 {member.mention_html()} — Swagat hai!\n\n"
-                f"🔐 <b>Pehle verify karo, phir chat karo!</b>\n\n"
-                f"Step 1️⃣ → <b>'Solve Captcha'</b> button dabao\n"
-                f"Step 2️⃣ → Bot PM mein code milega\n"
-                f"Step 3️⃣ → Wahi code <b>bot ko hi bhejo</b> (group mein nahi)\n"
-                f"Step 4️⃣ → Bot group link dega — join karo!\n\n"
-                f"⏳ <b>5 min</b> mein verify nahi hua → <b>Kick!</b>",
+                cap_text,
                 parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "🔐 Solve Captcha",
-                        url=f"https://t.me/{me.username}?start={start_param}",
-                    )
-                ]]),
+                reply_markup=InlineKeyboardMarkup(_rows),
             )
-            set_captcha(chat.id, member.id, "pending", sent.message_id)
+            set_captcha(chat.id, member.id, cap_word, sent.message_id, word=cap_word)
 
             async def _auto_kick_new(cid, uid, mid):
                 await asyncio.sleep(300)   # 5 min
@@ -367,10 +379,12 @@ _ADMIN_PREFIXES = (
     "unban_", "unmute_", "resetwarn_",
     "prem_a_", "prem_r_",
     "tog_", "cycle_",
-    "settings_", "scat_",           # ← scat_ = settings category
+    "settings_", "scat_",
     "rep_", "locktype_",
     "tagall_stop_",
     "tagall_resume_",
+    "wel_",           # welcome/goodbye view/reset buttons
+    "set_pct_",       # chatbot reply % buttons
 )
 
 _ADMIN_EXACT = {
@@ -378,7 +392,8 @@ _ADMIN_EXACT = {
     "close", "settings_main",
     "settings_flood", "settings_autodel",
     "settings_warn", "settings_locks",
-    "automod_dismiss",   # NEW: dismiss warning messages
+    "automod_dismiss",
+    "noop",           # section label buttons (do nothing)
 }
 
 _ADMIN_PREFIX_EXTRA = ("biofree_prompt_",)
@@ -387,8 +402,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data  = query.data
 
-    # Captcha buttons
-    if data.startswith("captcha_"):
+    # Captcha inline buttons — handled in chat.py (lazy import, no circular risk)
+    if data.startswith(("ci_", "cc_", "cs_", "captcha_")):
         from handlers.chat import captcha_callback_handler
         return await captcha_callback_handler(update, context)
 
