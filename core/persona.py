@@ -6,112 +6,92 @@ UPDATE_CHANNEL = "@asbhai_bsr"
 
 # ════════════════════════════════════════════════════════
 # BOT TRIGGER KEYWORDS
-# When any of these appear in a message, bot will reply
 # ════════════════════════════════════════════════════════
 
 BOT_TRIGGERS = [
-    # Bot names / nicknames
+    # Bot names
     "cutie", "cutie pie", "cutiepie",
     "bot", "robot", "robo",
     "as bot", "as group bot",
-
     # Direct address (Hinglish)
     "hey bot", "hi bot", "hello bot",
     "oye bot", "aye bot", "sun bot",
     "bhai bot", "yaar bot",
-
     # Attention words
     "suno", "sun", "batao", "bolo",
     "bol", "kya lagta", "kya sochti",
     "kya hai", "help me", "help karo",
-
-    # Common Indian attention words
+    # Common Indian
     "arre", "yaar", "dost",
 ]
 
 # ════════════════════════════════════════════════════════
-# STICKER IDs
-# Replace these with actual sticker file_ids from your bot
+# STICKER IDs — replace with real ones from your bot
 # ════════════════════════════════════════════════════════
 
 _STICKERS = {
-    "happy": [
-        "CAACAgIAAxkBAAIBB2YAAhappysticker1",   # replace with real IDs
-        "CAACAgIAAxkBAAIBB2YAAhappysticker2",
-    ],
-    "sad": [
-        "CAACAgIAAxkBAAIBB2YAAasadsticker1",
-        "CAACAgIAAxkBAAIBB2YAAasadsticker2",
-    ],
-    "angry": [
-        "CAACAgIAAxkBAAIBB2YAAaangrysticker1",
-    ],
-    "love": [
-        "CAACAgIAAxkBAAIBB2YAAalovesticker1",
-        "CAACAgIAAxkBAAIBB2YAAalovesticker2",
-    ],
-    "laugh": [
-        "CAACAgIAAxkBAAIBB2YAAlaughsticker1",
-    ],
-    "default": [
-        "CAACAgIAAxkBAAIBB2YAAdefaultsticker1",
-        "CAACAgIAAxkBAAIBB2YAAdefaultsticker2",
-    ],
+    "happy":   ["CAACAgIAAxkBAAIBB2YAAhappysticker1"],
+    "sad":     ["CAACAgIAAxkBAAIBB2YAAasadsticker1"],
+    "angry":   ["CAACAgIAAxkBAAIBB2YAAaangrysticker1"],
+    "love":    ["CAACAgIAAxkBAAIBB2YAAalovesticker1"],
+    "laugh":   ["CAACAgIAAxkBAAIBB2YAAlaughsticker1"],
+    "default": ["CAACAgIAAxkBAAIBB2YAAdefaultsticker1"],
 }
 
 def get_sticker(mood: str = "default") -> str:
-    """Return a random sticker file_id for given mood"""
     options = _STICKERS.get(mood, _STICKERS["default"])
     return random.choice(options)
 
 def should_send_sticker() -> bool:
-    """15% chance bot sends a sticker after replying"""
     return random.random() < 0.15
 
+
 # ════════════════════════════════════════════════════════
-# WELCOME MESSAGES
+# WELCOME MESSAGES — Roast + Funny Indian Style 😂
 # ════════════════════════════════════════════════════════
 
 _WELCOME_MSGS = [
-    "🌸 {mention} aa gaya/gayi! Welcome to the family~ 💘\nRules follow karo aur maza karo! 🎉",
-    "✨ Heyy {mention}! Welcome welcome~ 🌸\nAb group aur bhi acha lag raha hai! 💘",
-    "🎉 {mention} ka swagat hai! 🌸\nSaath mein bahut maza aayega~ 💘",
-    "💫 {mention} join kar liya! Yayy~ 🎊\nGroup rules zaroor padho! 🌸",
-    "🌺 Areyy {mention} aa gaya/gayi! 😄💘\nWelcome to our lovely group~ 🌸",
-    "🎀 {mention} welcome!! 🌸\nAb poori team complete ho gayi~ 💘",
-    "⭐ {mention} join ho gaye! 🎉\nRules follow karna mat bhulna~ 🌸",
-]
-
-_WELCOME_MEDIA_CAPTIONS = [
-    "Naya member! 🌸 {mention} — welcome ho~ 💘",
-    "{mention} aa gaye! 🎉 Group mein swagat hai~ 🌸",
+    "🎉 Aye {mention}! Aa gaye finally?\nRules padh lena bhai, warna main padhaaunga 😤",
+    "🌸 {mention} join ho gaye!\nSwagat hai... agar rules follow karoge toh 😏",
+    "😎 {mention} aaya/aayi! Ab group poora hua!\nPehle /rules padh lo, phir mazak karo 😂",
+    "✨ Heyy {mention}! Welcome welcome~\nGroup mein settle ho jao, gaali mat dena warna ban 👋😂",
+    "🎊 {mention} ka grand swagat!\nID proof mat maango, group hai Aadhaar center nahi 😅",
+    "🌺 Areyy {mention} aa gaya/aayi!\nRules follow karo, admin ke baap mat bano 😤",
+    "🎀 {mention}! Welcome!\nDekho naya member aaya — ab thodi life aayi group mein! 💘",
+    "⭐ {mention} join kiya!\nBhai seedha raho, tab tak sab theek hai 😊",
+    "🔥 {mention} enter the group!\nRules todne se pehle socho — ban milta hai maafi nahi 😈",
+    "💫 Aye {mention}! Group mein aao, settle ho jao!\nGaali doge toh main hoon na... band kardunga 😂",
 ]
 
 def get_welcome(mention: str) -> str:
-    """Return a random welcome message with mention"""
     msg = random.choice(_WELCOME_MSGS)
     return msg.replace("{mention}", mention)
 
 def get_welcome_caption(mention: str) -> str:
-    msg = random.choice(_WELCOME_MEDIA_CAPTIONS)
-    return msg.replace("{mention}", mention)
+    captions = [
+        "Naya member! 🌸 {mention} — swagat hai, rules follow karo!",
+        "{mention} aa gaye! 🎉 Mazak mast karo, gaali mat dena 😂",
+    ]
+    return random.choice(captions).replace("{mention}", mention)
+
 
 # ════════════════════════════════════════════════════════
-# GOODBYE MESSAGES
+# GOODBYE MESSAGES — Roast + Funny Indian Style 😂
 # ════════════════════════════════════════════════════════
 
 _GOODBYE_MSGS = [
-    "😢 {name} chala/chali gaya/gayi! Miss karenge~ 🌸",
-    "👋 Bye bye {name}! Take care~ 💘",
-    "💔 {name} ne group chod diya... sad~ 🌸",
-    "🚪 {name} left the chat. Aate rehna! 🌸",
-    "😔 {name} ab nahi rahega/rahegi... byeee 💘",
+    "😢 {name} chala/chali gaya/gayi...\nShayad rules se dara/dari 😂",
+    "👋 Bye {name}! Take care~\nAate rehna... agar himmat ho toh 😏",
+    "💔 {name} ne group chhod diya!\nLog aate hain, jaate hain — life goes on 🌸",
+    "🚪 {name} ne exit maar liya!\nKoi baat nahi, kuch log paida hi jaane ke liye hote hain 😂",
+    "😔 {name} left the chat!\nRona nahi chahiye... waise bhi rules nahi follow karte the 😤",
+    "🏃 {name} bhaag gaya/gayi!\nShayad ban se dara/dari thi — smart move 😂",
 ]
 
 def get_goodbye(name: str) -> str:
-    """Return a random goodbye message"""
     msg = random.choice(_GOODBYE_MSGS)
     return msg.replace("{name}", name)
+
 
 # ════════════════════════════════════════════════════════
 # ABOUT TEXT
@@ -121,6 +101,7 @@ ABOUT_TEXT = f"""
 🤖 <b>{BOT_NAME}</b>
 
 Advanced Telegram Group Manager with Smart AI 🌸
+(Jo rules nahi maanta, use main sambhalti hoon 😤)
 
 👨‍💻 Developer: {OWNER_USERNAME}
 📢 Updates: {UPDATE_CHANNEL}
