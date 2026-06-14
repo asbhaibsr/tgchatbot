@@ -38,6 +38,24 @@ filters_col      = db["filters"]
 
 _flood: dict = {}
 
+# ── MongoDB TTL Indexes — auto-delete old data ────────────
+# Ye ek baar chalte hain, MongoDB khud expired records delete karta hai
+# (Background mein kaam karta hai, bot pe load nahi)
+def _setup_ttl_indexes():
+    try:
+        # Messages: 7 din baad auto-delete
+        messages_col.create_index("at", expireAfterSeconds=7 * 24 * 3600, background=True)
+        # Captcha: 10 min baad auto-delete (extra buffer)
+        captcha_col.create_index("expires_at", expireAfterSeconds=0, background=True)
+        # Raid joins: 1 din baad auto-delete
+        raid_col.create_index("joined_at", expireAfterSeconds=24 * 3600, background=True)
+        # Prem state (conversation): 2 din
+        prem_state_col.create_index("updated_at", expireAfterSeconds=2 * 24 * 3600, background=True)
+    except Exception:
+        pass  # Index already exists ya permission nahi — koi baat nahi
+
+_setup_ttl_indexes()
+
 # ════════ USERS ════════
 def save_user(user):
     users_col.update_one(
@@ -183,11 +201,12 @@ def find_file_by_unique_id(unique_id: str):
     return file_hashes_col.find_one({"unique_id": unique_id})
 
 # ════════ CAPTCHA ════════
-def set_captcha(chat_id: int, user_id: int, answer: str, msg_id: int):
-    expires = datetime.now() + timedelta(minutes=2)
+def set_captcha(chat_id: int, user_id: int, answer: str, msg_id: int, word: str = ""):
+    expires = datetime.now() + timedelta(minutes=5)   # 5 min to solve
     captcha_col.update_one({"chat_id": chat_id, "user_id": user_id},
         {"$set": {"chat_id": chat_id, "user_id": user_id, "answer": str(answer),
-                  "msg_id": msg_id, "expires_at": expires}}, upsert=True)
+                  "word": word, "msg_id": msg_id, "expires_at": expires,
+                  "attempts": 0}}, upsert=True)
 
 def get_captcha(chat_id: int, user_id: int):
     doc = captcha_col.find_one({"chat_id": chat_id, "user_id": user_id})
@@ -196,6 +215,27 @@ def get_captcha(chat_id: int, user_id: int):
     if doc:
         captcha_col.delete_one({"_id": doc["_id"]})
     return None
+
+def inc_captcha_attempts(chat_id: int, user_id: int) -> int:
+    """Increment unsolicited message attempts. Returns new count."""
+    result = captcha_col.find_one_and_update(
+        {"chat_id": chat_id, "user_id": user_id},
+        {"$inc": {"attempts": 1}},
+        return_document=True,
+    )
+    return result["attempts"] if result else 0
+
+def update_captcha_input(chat_id: int, user_id: int, current_input: str):
+    """Store user's current typed captcha input in DB (Vercel-safe, no in-memory)."""
+    captcha_col.update_one(
+        {"chat_id": chat_id, "user_id": user_id},
+        {"$set": {"current_input": current_input}},
+    )
+
+def get_captcha_input(chat_id: int, user_id: int) -> str:
+    """Get user's current typed captcha input from DB."""
+    doc = captcha_col.find_one({"chat_id": chat_id, "user_id": user_id})
+    return (doc.get("current_input") or "") if doc else ""
 
 def del_captcha(chat_id: int, user_id: int):
     captcha_col.delete_one({"chat_id": chat_id, "user_id": user_id})
@@ -495,6 +535,11 @@ def clear_stickers(chat_id: int):
 
 # ════════ MOVIE REQUESTS (tag users who asked for this movie today) ════════
 movie_requests_col = db["movie_requests"]
+# Auto-delete movie requests after 2 days (tagging is only for today anyway)
+try:
+    movie_requests_col.create_index("requested_at", expireAfterSeconds=2 * 24 * 3600, background=True)
+except Exception:
+    pass
 
 def save_movie_request(chat_id: int, user_id: int, user_name: str, query: str):
     movie_requests_col.insert_one({
@@ -620,3 +665,41 @@ def save_global_stickers(file_ids: list):
 def get_global_stickers() -> list:
     return [d["file_id"] for d in global_stickers_col.find({}, {"file_id": 1})]
 
+
+# ════════════════════════════════════════════════════════
+# CLEANUP — Delete stale data so MongoDB stays lean
+# Call this probabilistically on every request (1% chance)
+# so old data auto-removes without a cron job on Vercel
+# ════════════════════════════════════════════════════════
+
+def cleanup_old_data():
+    """
+    Remove expired / stale records from MongoDB.
+    Vercel mein cron nahi hai — isliye har request pe 1% chance pe run karo.
+    
+    Kya delete hota hai:
+      messages_col      → 7+ din purane messages (learning data)
+      movie_requests_col→ 2+ din purane requests (daily tagging done)
+      captcha_col       → expired captchas (5 min ke baad)
+      captcha_token_col → expired tokens (5 min ke baad)
+    """
+    try:
+        now = datetime.now()
+        # 1. Group messages older than 7 days
+        messages_col.delete_many({
+            "at": {"$lt": now - timedelta(days=7)}
+        })
+        # 2. Movie requests older than 2 days
+        movie_requests_col.delete_many({
+            "requested_at": {"$lt": now - timedelta(days=2)}
+        })
+        # 3. Expired captchas
+        captcha_col.delete_many({
+            "expires_at": {"$lt": now}
+        })
+        # 4. Expired captcha tokens
+        captcha_token_col.delete_many({
+            "expires_at": {"$lt": now}
+        })
+    except Exception:
+        pass   # Cleanup failure should never crash the bot
