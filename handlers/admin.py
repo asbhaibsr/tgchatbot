@@ -497,12 +497,13 @@ async def ban_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.ban_chat_member(chat.id, target.id)
         await message.reply_text(
-            f"🔨 <b>{target.full_name}</b> banned!\n"
-            f"👮 By: {user.mention_html()}\n"
-            f"📝 Reason: <i>{reason}</i>",
+            f"🔨 <b>{target.full_name}</b> — BAND BAAJA BARAT! 😂\n"
+            f"👮 Kaam kiya: {user.mention_html()}\n"
+            f"📝 Reason: <i>{reason}</i>\n\n"
+            f"<i>Bhai rules follow karte toh aaj yeh din na aata 😭</i>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔓 Unban", callback_data=f"unban_{target.id}")
+                InlineKeyboardButton("🔓 Maafi de do", callback_data=f"unban_{target.id}")
             ]]),
         )
     except Exception as e:
@@ -521,7 +522,11 @@ async def unban_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         await context.bot.unban_chat_member(chat.id, target.id)
-        await message.reply_text(f"✅ <b>{target.full_name}</b> unbanned! 🌸", parse_mode="HTML")
+        await message.reply_text(
+            f"✅ <b>{target.full_name}</b> ko maafi mil gayi! 🙏\n"
+            f"<i>Ab seedha chalo bhai, ek aur mauka diya hai! 😤</i>",
+            parse_mode="HTML",
+        )
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -561,14 +566,15 @@ async def mute_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             permissions=ChatPermissions(can_send_messages=False),
             until_date=until,
         )
-        dur_text = f"{duration_min}m" if duration_min else "forever"
+        dur_text = f"{duration_min}m" if duration_min else "jab tak admin na bole"
         await message.reply_text(
-            f"🔇 <b>{target.full_name}</b> muted!\n"
-            f"⏱ Duration: <b>{dur_text}</b>\n"
-            f"👮 By: {user.mention_html()}",
+            f"🔇 <b>{target.full_name}</b> ki bolti band! 😂\n"
+            f"⏱ Kitna time: <b>{dur_text}</b>\n"
+            f"👮 By: {user.mention_html()}\n\n"
+            f"<i>Zyada bolta/bolti tha/thi kya? 🙉</i>",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔊 Unmute", callback_data=f"unmute_{target.id}")
+                InlineKeyboardButton("🔊 Bol sakta ab", callback_data=f"unmute_{target.id}")
             ]]),
         )
     except Exception as e:
@@ -592,7 +598,11 @@ async def unmute_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 can_send_other_messages=True, can_add_web_page_previews=True,
             ),
         )
-        await message.reply_text(f"🔊 <b>{target.full_name}</b> unmuted! 🌸", parse_mode="HTML")
+        await message.reply_text(
+            f"🔊 <b>{target.full_name}</b> ab bol sakta/sakti hai!\n"
+            f"<i>Seedha bolo, warna dobara band karenge 😤</i>",
+            parse_mode="HTML",
+        )
     except Exception as e:
         await message.reply_text(f"❌ {e}")
 
@@ -615,7 +625,8 @@ async def kick_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(0.5)
         await context.bot.unban_chat_member(chat.id, target.id)
         await message.reply_text(
-            f"👟 <b>{target.full_name}</b> kicked!\n(Wapas aa sakte hain)",
+            f"👟 <b>{target.full_name}</b> ko jooton se bahar maar diya! 😂\n"
+            f"<i>Wapas aa sakte hain... agar himmat ho toh 😏</i>",
             parse_mode="HTML",
         )
     except Exception as e:
@@ -648,12 +659,12 @@ async def warn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if n >= limit:
         warn_text = (
             f"╔══════════════════╗\n"
-            f"  🚨 <b>AUTO BAN</b>\n"
+            f"  💀 <b>GAME OVER</b>\n"
             f"╚══════════════════╝\n\n"
-            f"👤 {target.mention_html()}\n"
+            f"👤 {target.mention_html()} bhai teri aakhri dafa thi!\n"
             f"📝 Reason: <i>{reason}</i>\n"
             f"⚠️ Warns: {bar}\n\n"
-            f"🔨 <b>Warn limit paar! Ban ho gaya.</b>"
+            f"🔨 <b>Warn limit full — BAN HO GAYA! Shukriya aane ka 😂</b>"
         )
         await message.reply_text(warn_text, parse_mode="HTML")
         try:
@@ -662,7 +673,7 @@ async def warn_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
     else:
-        danger = "\n🔴 <b>AGLA WARN = AUTO BAN!</b>" if n == limit - 1 else ""
+        danger = "\n🔴 <b>EK AUR GALTI = TICKET TO BANISTAN! 🎫😂</b>" if n == limit - 1 else ""
         warn_text = (
             f"╔══════════════════╗\n"
             f"  ⚠️ <b>WARNING #{n}</b>\n"
@@ -2560,4 +2571,57 @@ async def biofree_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             uid = int(context.args[0])
             target_obj = type("U", (), {"id": uid, "full_name": str(uid), "mention_html": lambda: f"<code>{uid}</code>"})()
         except Exception:
-            await message.reply_text("
+            await message.reply_text("❌ Invalid user ID! Number dalo.")
+            return
+        target_obj = target_obj
+    else:
+        target_obj = target
+
+    from core.db import grant_bio_perm
+    grant_bio_perm(chat.id, target_obj.id)
+    await message.reply_text(
+        f"✅ <b>{target_obj.full_name}</b> ko bio link permission mil gayi! 🧬\n"
+        f"Ab wo group mein freely message kar sakta/sakti hai. 🌸",
+        parse_mode="HTML",
+    )
+
+
+# ══════════════════════════════════════════════════════════
+# /LEARNFROMGROUPS — Userbot se groups ki history seekhna
+# ══════════════════════════════════════════════════════════
+
+async def learn_from_groups_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user    = update.effective_user
+    message = update.effective_message
+
+    if not _is_owner(user.id):
+        return
+
+    wait = await message.reply_text("⏳ Groups se seekhna shuru kar raha hoon...\nThoda time lagega ☕")
+
+    async def progress(msg: str):
+        try:
+            await wait.edit_text(msg)
+        except Exception:
+            pass
+
+    try:
+        from core.userbot import batch_learn_from_groups
+        result = await batch_learn_from_groups(status_callback=progress)
+    except Exception as e:
+        await wait.edit_text(f"❌ Error: {e}")
+        return
+
+    if result.get("error"):
+        await wait.edit_text(
+            f"❌ <b>Error aaya:</b>\n<code>{result['error']}</code>",
+            parse_mode="HTML",
+        )
+    else:
+        await wait.edit_text(
+            f"✅ <b>Learning Complete!</b>\n\n"
+            f"📂 Groups processed: <b>{result['groups']}</b>\n"
+            f"🧠 Patterns seekhe: <b>{result['patterns']}</b>\n\n"
+            f"Bot ab in conversations se jawab de sakta hai! 🌸",
+            parse_mode="HTML",
+        )
