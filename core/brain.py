@@ -208,6 +208,13 @@ def detect_topic(text: str) -> str:
 # ════════════════════════════════════════════════════════
 
 def find_reply(text: str, chat_id: int = None, user_name: str = None) -> str | None:
+    """
+    Find a reply for the given text.
+    Priority:
+    1. DB learned patterns (exact → 3-word → 2-word sliding window)
+    2. Greetings (hi/hello/bye etc.)
+    3. Return None — no hardcoded topic/mood/question fallbacks
+    """
     if not text:
         return None
 
@@ -215,30 +222,24 @@ def find_reply(text: str, chat_id: int = None, user_name: str = None) -> str | N
     recent_bot_replies = get_recent_bot_replies(chat_id) if chat_id else []
 
     def pick(options: list) -> str:
-        """Pick a reply not recently used"""
-        fresh = [r for r in options if r not in recent_bot_replies]
+        fresh  = [r for r in options if r not in recent_bot_replies]
         chosen = random.choice(fresh) if fresh else random.choice(options)
         if chat_id:
             push_bot_reply(chat_id, chosen)
         return chosen
 
-    # 1. DB learned patterns (highest priority)
-    # Try: exact match → 3-word subsets → 2-word subsets
+    # 1. DB learned patterns — exact match → 3-word → 2-word sliding window
     pattern = get_best_pattern(text)
     if not pattern:
         words = text_lower.split()
-        # Try 3-word sliding window
         if len(words) >= 3:
             for i in range(len(words) - 2):
-                snippet = " ".join(words[i:i+3])
-                pattern = get_best_pattern(snippet)
+                pattern = get_best_pattern(" ".join(words[i:i+3]))
                 if pattern:
                     break
-        # Try 2-word sliding window
         if not pattern and len(words) >= 2:
             for i in range(len(words) - 1):
-                snippet = " ".join(words[i:i+2])
-                pattern = get_best_pattern(snippet)
+                pattern = get_best_pattern(" ".join(words[i:i+2]))
                 if pattern:
                     break
     if pattern:
@@ -246,75 +247,46 @@ def find_reply(text: str, chat_id: int = None, user_name: str = None) -> str | N
         if responses:
             return pick(responses)
 
-    # 2. Greeting detection
+    # 2. Greetings only
     for keyword, replies in _GREETINGS.items():
         if keyword in text_lower.split() or text_lower == keyword:
             return pick(replies)
 
-    # 3. Mood-based reply
-    mood = detect_mood(text_lower)
-    topic = detect_topic(text_lower)
-
-    if mood == "sad":
-        return pick(_SAD_REPLIES)
-    if mood == "angry":
-        return pick(_ANGRY_REPLIES)
-    if mood == "flirty":
-        return pick(_FLIRTY_REPLIES)
-    if mood == "happy" and topic != "general":
-        return pick(_POSITIVE_REPLIES)
-
-    # 4. Topic-based
-    if topic == "movie":
-        return pick(_MOVIE_TOPIC_REPLIES)
-    if topic == "food":
-        return pick(_FOOD_TOPIC_REPLIES)
-
-    # 5. Question detection
-    if "?" in text or any(w in text_lower for w in ["kya", "kaun", "kahan", "kab", "kyun", "kaise"]):
-        for qw, qreplies in _QUESTION_REPLIES.items():
-            if qw in text_lower:
-                return pick(qreplies)
-        return pick([
-            "hmm yeh toh achha sawaal hai 🤔",
-            "sochne wali baat hai... 💭",
-            "arey mujhe bhi nahi pata 😅",
-            "main bhi yahi soch rahi thi 😄",
-            "interesting sawaal~ 🌸",
-        ])
-
+    # 3. No match — stay silent (caller decides: sticker or nothing)
     return None
 
 
-def make_girl_reply(text: str = "", chat_id: int = None, user_name: str = None) -> str:
-    """Main reply function — tries everything before fallback"""
-    if not text:
-        return random.choice(_GENERAL_REPLIES)
-
+def make_girl_reply(text: str = "", chat_id: int = None, user_name: str = None) -> str | None:
+    """
+    Reply engine — priority order:
+    1. DB learned patterns (from group conversations)
+    2. Greeting detection (hi/hello/bye etc.)
+    3. If nothing matches → None (bot stays silent or sends sticker)
+    NO hardcoded general/topic fallbacks.
+    """
     recent_bot_replies = get_recent_bot_replies(chat_id) if chat_id else []
 
     def pick(options: list) -> str:
-        fresh = [r for r in options if r not in recent_bot_replies]
+        fresh  = [r for r in options if r not in recent_bot_replies]
         chosen = random.choice(fresh) if fresh else random.choice(options)
         if chat_id:
             push_bot_reply(chat_id, chosen)
         return chosen
 
-    text_lower = text.lower()
+    # 1. DB learned pattern (highest priority)
+    pattern = find_reply(text, chat_id, user_name)
+    if pattern:
+        return pattern
 
-    if len(text_lower) < 3:
-        return pick(["hmm? 🌸", "haan? 👀", "bolo~ 💘", "ji? 😊"])
+    # 2. Greeting detection only
+    if text:
+        t = text.lower().strip()
+        for key, replies in _GREETINGS.items():
+            if key in t:
+                return pick(replies)
 
-    result = find_reply(text, chat_id, user_name)
-    if result:
-        # Occasionally add name if known
-        if user_name and random.random() < 0.25:
-            first = user_name.split()[0]
-            prefixes = [f"{first}~ ", f"arre {first}! ", f"yaar {first}, "]
-            result = random.choice(prefixes) + result
-        return result
-
-    return pick(_GENERAL_REPLIES)
+    # 3. No match — return None (caller decides: sticker or silence)
+    return None
 
 
 def make_gaali_reply(chat_id: int = None) -> str:
