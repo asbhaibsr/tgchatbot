@@ -1,451 +1,327 @@
-# 🌸 AS Group Bot — Complete Guide
+<div align="center">
 
-> **Vercel + MongoDB | Python Telegram Bot | Smart AI Chatbot | Advanced Group Manager**
-> By [@asbhaibsr](https://t.me/asbhaibsr) | Updates: [@asbhai_bsr](https://t.me/asbhai_bsr)
+```
+░█████╗░░██████╗  ░██████╗░██████╗░░█████╗░██╗░░░██╗██████╗░  ██████╗░░█████╗░████████╗
+██╔══██╗██╔════╝  ██╔════╝░██╔══██╗██╔══██╗██║░░░██║██╔══██╗  ██╔══██╗██╔══██╗╚══██╔══╝
+███████║╚█████╗░  ██║░░██╗░██████╔╝██║░░██║██║░░░██║██████╔╝  ██████╦╝██║░░██║░░░██║░░░
+██╔══██║░╚═══██╗  ██║░░╚██╗██╔══██╗██║░░██║██║░░░██║██╔═══╝░  ██╔══██╗██║░░██║░░░██║░░░
+██║░░██║██████╔╝  ╚██████╔╝██║░░██║╚█████╔╝╚██████╔╝██║░░░░░  ██████╦╝╚█████╔╝░░░██║░░░
+╚═╝░░╚═╝╚═════╝░  ╚═════╝░╚═╝░░╚═╝░╚════╝░░╚═════╝░╚═╝░░░░░  ╚═════╝░░╚════╝░░░░╚═╝░░░
+```
+
+# ᴀꜱ ɢʀᴏᴜᴘ ʙᴏᴛ 🌸
+
+**Advanced Telegram Group Manager | Vercel + MongoDB | Hinglish Style**
+
+[![Deploy on Vercel](https://img.shields.io/badge/Deploy%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
+[![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python)](https://python.org)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Atlas%20Free-green?style=for-the-badge&logo=mongodb)](https://mongodb.com/atlas)
+[![Telegram](https://img.shields.io/badge/Telegram-Bot-blue?style=for-the-badge&logo=telegram)](https://t.me/asbhaibsr)
+
+*Group ka thanedar — gaali doge toh ban, rules todoge toh ban, attitude dikhaya toh bhi ban* 😂
+
+</div>
 
 ---
 
-## 📁 Project Structure
+## ✨ Features
+
+### 🆓 Free (Sab Groups ke liye)
+| Feature | Description |
+|---------|-------------|
+| 🤬 Anti-Gaali | 200+ Hindi/English words + leetspeak detection |
+| 📝 Notes System | `#notename` se instant notes |
+| 🤖 Smart AI Chat | Human-like Hinglish replies |
+| ⚠️ Warn System | Progress bar + auto-ban on limit |
+| 🔨 Ban/Mute/Kick | Full moderation tools |
+| 👋 Welcome/Goodbye | Custom messages with variables |
+| 📌 Pin/Purge | Message management |
+| 🏷️ Tag All | Sab members ko tag |
+| 🔍 Filters | Auto-reply keyword system |
+
+### 👑 Premium Only
+| Feature | Description |
+|---------|-------------|
+| 🔗 Anti-Link | Telegram links block |
+| 👤 Anti-Username Promo | Bio link spam block |
+| 🛡️ Anti-Raid | Auto-lock on mass join |
+| 🎬 Movie System | File copyright protection |
+| 🤖 Button Captcha | New member verification |
+| 📊 Analytics | Group stats + top users |
+| ⏰ Scheduler | Daily timed messages |
+| 🗑️ Auto-Delete | Media auto-delete timer |
+| ⚡ Flood Control | Spam protection |
+
+---
+
+## 🚀 Deploy on Vercel (Free)
+
+### Step 1 — Fork & Clone
+```bash
+git clone https://github.com/yourusername/tgchatbot
+cd tgchatbot
+```
+
+### Step 2 — Vercel Setup
+```bash
+npm i -g vercel
+vercel login
+vercel --prod
+```
+
+### Step 3 — Environment Variables
+Vercel Dashboard → Project → Settings → Environment Variables mein yeh sab add karo:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BOT_TOKEN` | BotFather se liya token | `1234567890:AAF...` |
+| `WEBHOOK_URL` | Tumhara Vercel URL | `https://tgchatbot-xxx.vercel.app` |
+| `ADMIN_ID` | Tumhara Telegram User ID | `123456789` |
+| `MONGODB_URI` | MongoDB Atlas connection string | `mongodb+srv://...` |
+| `LOG_CHANNEL_ID` | Log channel ID (optional) | `-100123456789` |
+| `PREMIUM_PRICE` | Premium price in ₹ | `99` |
+| `CRON_SECRET` | Cron job secret key | `any_random_string` |
+| `API_ID` | Pyrogram API ID (optional, for /learnfromgroups) | `12345` |
+| `API_HASH` | Pyrogram API Hash (optional) | `abcdef...` |
+| `USERBOT_SESSION` | Pyrogram session string (optional) | `BQA...` |
+
+### Step 4 — Webhook Set karo
+Deploy ke baad yeh URL kholo:
+```
+https://your-vercel-url.vercel.app/set_webhook
+```
+✅ `{"ok": true}` aaya? Bot ready hai!
+
+### Step 5 — Debug Check
+```
+https://your-vercel-url.vercel.app/debug
+```
+
+---
+
+## 📋 BotFather Commands
+
+> **Copy karo → BotFather mein `/setcommands` → Paste karo** ✅
+
+```
+start - Bot start karo 🚀
+help - Commands dekho 📖
+settings - Group settings panel ⚙️
+ban - User ban karo 🔨
+unban - User unban karo 🔓
+mute - User mute karo 🔇
+unmute - User unmute karo 🔊
+kick - User kick karo 👟
+warn - Warning do ⚠️
+warns - Warnings dekho 📊
+resetwarn - Warnings reset karo 🔄
+pin - Message pin karo 📌
+unpin - Message unpin karo
+del - Message delete karo 🗑
+purge - Multiple msgs delete karo
+promote - Admin banao 👑
+demote - Admin hatao
+tagall - Sab ko tag karo 📢
+stoptagall - Tagging rokao ✋
+lock - Content lock karo 🔒
+unlock - Content unlock karo 🔓
+setwelcome - Welcome message set karo 👋
+setgoodbye - Goodbye message set karo 🚪
+setrules - Group rules set karo 📋
+save - Note save karo 📝
+get - Note get karo
+notes - All notes dekho
+delnote - Note delete karo
+filter - Auto-reply filter set karo 🎯
+filters - Sab filters dekho
+stop - Ek filter hatao
+stopall - Sab filters hatao
+schedule - Daily message schedule karo ⏰
+unschedule - Schedule cancel karo
+slowmode - Slowmode set karo 🐢
+floodlimit - Flood limit set karo
+autodel - Auto-delete set karo
+warnlimit - Warn limit set karo
+adminlist - Admins list dekho 👮
+id - User/Chat ID dekho 🆔
+whois - User info dekho 🔍
+stats - Group statistics dekho 📊
+topusers - Top chatters dekho 🏆
+report - Admin ko report karo 🚨
+font - Fancy font converter ✨
+rules - Group rules dekho 📋
+premium - Premium info dekho 👑
+subscribe - Premium lene ke liye 💳
+biofree - Bio link permission do 🧬
+```
+
+---
+
+## 🗂️ Project Structure
 
 ```
 tgchatbot/
 ├── api/
-│   └── index.py           ← Vercel entry (FastAPI + webhook)
+│   └── index.py          # FastAPI app — webhook + all routes
 ├── handlers/
-│   ├── events.py          ← Join/leave/start/callback events
-│   ├── admin.py           ← Admin commands
-│   ├── user.py            ← User commands + help
-│   ├── chat.py            ← AI chatbot + anti-spam
-│   └── filters.py         ← 🆕 Keyword filter system
+│   ├── admin.py          # 2600+ lines — moderation, settings, premium
+│   ├── chat.py           # Message handler — AI, anti-gaali, captcha
+│   ├── events.py         # New member, left, start, callback router
+│   ├── filters.py        # Auto-reply filter system
+│   └── user.py           # Help menu, /rules, /font, /premium
 ├── core/
-│   ├── db.py              ← MongoDB (all collections)
-│   ├── brain.py           ← Self-learning AI
-│   └── persona.py         ← Bot personality
-├── requirements.txt
-└── vercel.json
+│   ├── brain.py          # AI reply engine — pattern matching + learn
+│   ├── db.py             # MongoDB — ALL database functions
+│   ├── persona.py        # Bot name, welcome/goodbye messages
+│   └── userbot.py        # Pyrogram session — learn from groups
+├── vercel.json           # Vercel config
+└── requirements.txt      # Dependencies
 ```
 
 ---
 
-## 🚀 Deploy on Vercel
+## 🗃️ MongoDB Collections
 
-### Step 1 — GitHub
+> Sab MongoDB Atlas Free Tier pe chalta hai (512MB — kaafi hai!)
 
-1. New GitHub repository banao
-2. Ye saari files upload/push karo
-
-### Step 2 — Vercel
-
-1. [vercel.com](https://vercel.com) → "New Project" → GitHub repo select
-2. Deploy karo (Python serverless automatically detect hoga)
-
-### Step 3 — Environment Variables
-
-Vercel Dashboard → Project → Settings → Environment Variables:
-
-| Variable | Value |
-|----------|-------|
-| `BOT_TOKEN` | BotFather se mila token |
-| `MONGODB_URI` | `mongodb+srv://user:pass@cluster.../cutie_pie_bot` |
-| `ADMIN_ID` | Tumhara Telegram user ID |
-| `LOG_CHANNEL_ID` | Log channel ID (e.g. `-1001234567890`) |
-| `FILE_LOG_CHANNEL` | Movie file log channel ID |
-| `WEBHOOK_URL` | `https://your-project.vercel.app` |
-| `PREMIUM_PRICE` | `99` (default) |
-| `CRON_SECRET` | Random secret string |
-
-### Step 4 — Webhook Set Karo
-
-Deploy ke baad browser mein kholo:
-```
-https://your-project.vercel.app/set_webhook
-```
-
-✅ `{"ok": true}` aaye toh sab theek hai!
+| Collection | Stores |
+|------------|--------|
+| `users` | User info + message count |
+| `groups` | Group settings + premium status |
+| `warns` | User warnings per group |
+| `notes` | Saved notes per group |
+| `patterns` | AI learned reply patterns |
+| `filters` | Auto-reply keyword filters |
+| `scheduled` | Scheduled daily messages |
+| `captcha` | Active captcha sessions |
+| `bio_permissions` | Bio link permissions |
+| `sticker_packs` | Owner's global sticker packs |
+| `bot_replies` | Recent bot reply dedup (Vercel-safe) |
+| `pending_deletes` | Auto-delete queue |
 
 ---
 
-## 🔑 Filter System — Full Guide
+## ⚙️ Settings Panel (`/settings`)
 
-Filter = Jab koi group mein koi keyword likhe, bot automatically reply kare.
+Bot ka pura control `/settings` se:
 
-### ➕ Filter Lagana
-
-**Simple text filter:**
 ```
-/filter 'hello' Namaste! Kaise ho? 🌸
+📌 Welcome ON/OFF
+📌 Goodbye ON/OFF  
+📌 Anti-Gaali ON/OFF
+📌 Anti-Link (Premium)
+📌 Anti-Raid (Premium)
+📌 Captcha (Premium)
+📌 AI Chatbot % (0-100%)
+📌 Movie System (Premium)
+📌 Flood Control (Premium)
+📌 Auto-Delete (Premium)
 ```
-
-**Multi-word keyword:**
-```
-/filter 'kya hal' Mast hoon bhai, aur tum? 😄
-```
-
-**Media filter** (photo/sticker/document/video reply karke):
-1. Jo photo/sticker/file use karni hai usse reply karo
-2. Command likho:
-```
-/filter 'rules dekho'
-```
-
-**Media + caption:**
-```
-/filter 'join karo' Hamare channel mein aao!
-```
-*(kisi photo ko reply karte hue)*
-
-**Buttons wala filter:**
-```
-/filter 'channel' Hamare channel join karo!
-[📢 Channel](https://t.me/asbhai_bsr) [🌐 Website](https://astoolswala.online)
-[📞 Contact](https://t.me/asbhaibsr)
-```
-
-**Button syntax rules:**
-- `[Button Text](https://url.com)` — URL button
-- `[Btn1](url1) [Btn2](url2)` — Same line = same row
-- `[Btn3](url3)` — Next line = next row
-
-**Ek keyword ke multiple responses:**
-```
-/filter 'hi' Heyy! 😊
-/filter 'hi' Kya haal hai? 🌸
-/filter 'hi' Hello ji! Kaise hain aap? 💘
-```
-*(Teeno mein se random ek reply aayega)*
 
 ---
 
-### 📋 Filters List Dekhna
+## 💡 Filters System
 
-```
+```bash
+# Text filter
+/filter 'keyword' Yeh reply aayegi
+
+# Media filter (reply to image/video se)  
+/filter 'keyword'
+
+# Button wala filter
+/filter 'keyword' Click here! [Button Text](https://example.com)
+
+# Dekhne ke liye
 /filters
-```
 
-Output:
-```
-📋 Group Name — Filters (5)
-
-1. channel 🖼 🔘 — 1 response
-2. hello 📝 — 3 responses
-3. join karo 📝 — 1 response
-4. rules 📄 — 1 response
-5. website 📝 🔘 — 2 responses
-```
-
-Icons:
-- 📝 Text  |  🖼 Photo  |  😄 Sticker  |  📄 Document
-- 🎬 Video  |  🎵 Audio  |  🎞 GIF  |  🎤 Voice  |  🔘 Buttons
-
----
-
-### ❌ Filter Delete Karna
-
-**Ek filter delete:**
-```
-/stop 'hello'
-/stop hello
-```
-
-**Sab filters delete:**
-```
+# Delete karne ke liye
+/stop 'keyword'
 /stopall
 ```
 
 ---
 
-## 👮 Admin Commands — Full List
-
-### Moderation
-
-| Command | Description |
-|---------|-------------|
-| `/ban` | Reply ya ID se ban karo |
-| `/unban` | Unban karo |
-| `/mute [1h/30m/1d]` | Mute karo (time optional) |
-| `/unmute` | Unmute karo |
-| `/kick` | Group se kick karo |
-| `/warn [reason]` | Warning do (3 pe auto-ban) |
-| `/warns` | Kisi ke warns dekho |
-| `/resetwarn` | Warns reset karo |
-
-### Messages
-
-| Command | Description |
-|---------|-------------|
-| `/pin` | Message pin (reply kar ke) |
-| `/unpin` | Unpin karo |
-| `/del` | Ek message delete (reply kar ke) |
-| `/purge` | Reply se aage sab delete |
-
-### Promotions
-
-| Command | Description |
-|---------|-------------|
-| `/promote` | Admin banao |
-| `/demote` | Admin hatao |
-| `/adminlist` | Sab admins list |
-
-### Group Settings
-
-| Command | Description |
-|---------|-------------|
-| `/settings` | Full toggle panel |
-| `/setwelcome {name} {group}` | Custom welcome message |
-| `/setgoodbye` | Custom goodbye |
-| `/setrules text` | Group rules set |
-| `/lock stickers/gifs/polls/media/voice` | Lock karo |
-| `/unlock type` | Unlock karo |
-| `/slowmode [sec]` | Slowmode set |
-
-### Filters (🆕)
-
-| Command | Description |
-|---------|-------------|
-| `/filter 'keyword' text` | Filter set karo |
-| `/filter 'kw'` *(reply)* | Media filter |
-| `/filters` | Sab filters list |
-| `/stop 'keyword'` | Ek filter delete |
-| `/stopall` | Sab filters delete |
-
-### Notes System
-
-| Command | Description |
-|---------|-------------|
-| `/save name content` | Note save karo |
-| `/get name` | Note retrieve |
-| `/notes` | All notes list |
-| `/delnote name` | Note delete |
-| `#notename` | Anywhere type karo → auto-reply |
-
-### Welcome / Rules
-
-| Command | Description |
-|---------|-------------|
-| `/setwelcome {name} {group}` | Custom welcome |
-| `/setgoodbye` | Custom goodbye |
-| `/setrules text` | Rules set |
-| `/rules` | Rules dekho |
-
-### Analytics (Premium 👑)
-
-| Command | Description |
-|---------|-------------|
-| `/stats` | Group statistics |
-| `/topusers` | Top chatters list |
-| `/whois` | User full info |
-
-### Scheduled Messages (Premium 👑)
-
-| Command | Description |
-|---------|-------------|
-| `/schedule HH:MM text` | Daily auto-message |
-| `/unschedule` | Schedule cancel |
-
-### Advanced (Premium 👑)
-
-| Command | Description |
-|---------|-------------|
-| `/floodlimit N` | Flood limit set |
-| `/autodel sec` | Auto-delete timer |
-| `/warnlimit N` | Max warns before ban |
-| `/unlock_raid` | Raid ke baad group unlock |
-| `/tagall [msg]` | Sab active members tag |
-| `/stoptagall` | Tagall rok do |
-
----
-
-## 👤 User Commands
-
-| Command | Description |
-|---------|-------------|
-| `/start` | Bot se milo |
-| `/help` | Help menu (interactive) |
-| `/rules` | Group rules dekho |
-| `/id` | Apni/kisi ki ID dekho |
-| `/whois` | User profile info |
-| `/premium` | Premium info + subscribe |
-| `/report reason` | Admin ko alert (reply karke) |
-| `/font text` | Fancy text convert |
-| `/adminlist` | Admins ki list |
-| `#notename` | Note directly get karo |
-
----
-
-## 🤖 Owner Commands
-
-*(Sirf bot owner ke liye)*
-
-| Command | Description |
-|---------|-------------|
-| `/broadcast msg` | Sab users ko message |
-| `/addprem chat_id days` | Premium do |
-| `/remprem chat_id` | Premium hatao |
-| `/premiumstats` | Premium groups list |
-| `/teach trigger \| response` | Pattern sikhao |
-| `/forget trigger` | Pattern bhulao |
-| `/patterns` | Sab patterns dekho |
-| `/blockuser user_id` | Bot se block |
-| `/unblockuser user_id` | Bot se unblock |
-
----
-
-## ⚙️ Settings Panel — /settings
-
-```
-✅ Chatbot       ✅ Welcome
-✅ Goodbye       ❌ Anti-Gaali 🆓
-❌ Anti-Username  ❌ Anti-Link 👑
-[👑 Unlock Premium Features]
-[⚡ Flood Limit]  [⏱ Auto-Del Time]
-[🔒 Lock Types]   [⚠️ Warn Limit]
-```
-
-**Free Features:**
-- Chatbot, Welcome, Goodbye
-- Anti-Gaali (200+ Hindi/English abusive words)
-- Anti-Username Promo
-- Notes, Filters, Warns, Pin/Del/Purge
-
-**Premium 👑 Features:**
-- Anti-Link, Anti-Forward, Anti-Raid
-- Captcha for new members
-- Flood control, Auto-delete
-- Movie/file system
-- Scheduled messages
-- Full analytics
-
----
-
-## 🧠 Self-Learning System
-
-### Method 1 — Admin Reply
-1. Koi bhi message aaye group mein
-2. Admin us message ko **reply kare** apna jawab likh ke
-3. Bot seekh leti hai → agle baar aise message pe wahi reply
-
-### Method 2 — /teach
-```
-/teach trigger word | jawab text
-/teach kya hal | Mast hoon bhai!
-/teach good morning | Good morning! ☀️ Kaise ho?
-```
-
-### Method 3 — Auto Learning
-Bot automatically conversation patterns observe karke seekhti hai.
-
-### Patterns manage:
-```
-/forget trigger word     ← ek pattern bhulao
-/patterns               ← sab patterns dekho
-```
-
----
-
-## 🎬 Movie/File System (Premium)
-
-Enabled by `/settings` → Movie Sys toggle.
-
-**Kaise kaam karta hai:**
-1. Admin group mein movie file bhejta hai (doc/video)
-2. Bot automatically file ko log channel mein store karta hai
-3. Duplicate files automatically detect hoti hain
-4. Caption modes: HARD (full copyright notice) / SOFT / NONE
-
----
-
-## 🛡 Copyright & Disclaimer
-
-Bot ke messages mein automatically yeh protection hai:
-
-```
-⚠️ This content is for educational purposes only.
-All rights reserved © AS Group Bot
-Unauthorized redistribution prohibited.
-```
-
-**Bot Ban Prevention:**
-- Bot kabhi bhi NSFW ya illegal content share nahi karta
-- Movie system sirf registered admins ke liye hai
-- Anti-spam features active hain
-- Log channel mein sab activity record hoti hai
-
----
-
-## 💬 Delete Bot Messages
-
-Kisi bhi bot message ko delete karne ke liye:
-1. Bot ke message ko **select/reply** karo
-2. `/del` command use karo
-
-Ya purge use karo multiple messages ke liye:
-```
-/purge         ← reply se aage sab delete
-```
-
----
-
-## 📊 MongoDB Setup (Free)
-
-1. [mongodb.com/atlas](https://mongodb.com/atlas) → Free M0 cluster
-2. Database user banao
-3. IP: `0.0.0.0/0` allow karo
-4. Connection string:
-   ```
-   mongodb+srv://USERNAME:PASSWORD@cluster.mongodb.net/cutie_pie_bot
-   ```
-5. Vercel env mein `MONGODB_URI` set karo
-
-**Collections automatically banti hain:**
-- `users`, `groups`, `filters`, `notes`, `warnings`
-- `patterns`, `analytics`, `captcha_pending`
-- `scheduled_msgs`, `raid_joins`, `tagall_jobs`
-
----
-
-## 🔧 Local Testing
+## 📝 Notes System
 
 ```bash
-pip install python-telegram-bot==20.7 pymongo fastapi uvicorn httpx
+# Save
+/save welcome Iss group mein swagat hai!
 
-# .env file banao:
-export BOT_TOKEN="your_token"
-export MONGODB_URI="your_uri"
-export ADMIN_ID="your_id"
-export WEBHOOK_URL="https://your-domain.vercel.app"
+# Get
+/get welcome
+# Ya directly type karo:
+#welcome
 
-uvicorn api.index:app --reload --port 8000
+# List
+/notes
+
+# Delete
+/delnote welcome
 ```
 
 ---
 
-## 📜 Changelog
+## 🧠 AI Learning
 
-### v2.0 — Filter System Added 🆕
-- `/filter` — Keyword auto-reply (text/photo/sticker/doc/video)
-- `/filters` — List all filters
-- `/stop` — Delete specific filter
-- `/stopall` — Clear all filters
-- Inline button support `[text](url)` syntax
-- Multiple responses per keyword (random pick)
+```bash
+# Manually teach karo
+/teach trigger=reply here
 
-### v1.5 — Bug Fixes
-- Fixed `filters.STICKER` AttributeError → `filters.Sticker.ALL`
-- Fixed `unlock_raid_handler` import error
+# Forget karo
+/forget trigger
 
-### v1.0 — Initial Release
-- AI Chatbot, Anti-Gaali, Notes, Warns
-- Premium system, Movie file system
-- Anti-Raid, Captcha, Analytics
+# Patterns list
+/patterns
+
+# Groups se seekhna (Pyrogram session chahiye)
+/learnfromgroups
+```
+
+---
+
+## 🎬 Movie System (Premium)
+
+1. Bot ko **File Log Channel** mein add karo (admin)
+2. `FILE_LOG_CHANNEL` env var set karo
+3. Files us channel mein forward karo — bot automatically index karega
+4. Group mein movie naam type karo → bot dhundke dega
+
+---
+
+## 🔧 Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Bot respond nahi kar raha | `/set_webhook` URL visit karo |
+| `AttributeError` on startup | `requirements.txt` check karo |
+| MongoDB connection fail | `MONGODB_URI` format check karo |
+| Warn buttons kaam nahi | `events.py` mein `warn_dismiss_` routing check karo |
+| `/learnfromgroups` fail | `API_ID`, `API_HASH`, `USERBOT_SESSION` env vars set karo |
+
+---
+
+## 🔐 Security
+
+- Bot Token kabhi GitHub pe push mat karo
+- `CRON_SECRET` random strong value rakho
+- MongoDB Atlas mein IP whitelist `0.0.0.0/0` karo (Vercel ke liye)
+- Admin ID sahi set karo — sirf usi ko owner commands milenge
 
 ---
 
 ## 📞 Support
 
-- Telegram: [@asbhaibsr](https://t.me/asbhaibsr)
-- Channel: [@asbhai_bsr](https://t.me/asbhai_bsr)
-- Website: [astoolswala.online](https://astoolswala.online)
+- **Owner:** [@asbhaibsr](https://t.me/asbhaibsr)
+- **Channel:** [@asbhai_bsr](https://t.me/asbhai_bsr)
+- **Group:** [@aschat_group](https://t.me/aschat_group)
 
 ---
 
-*Made with 💘 by @asbhaibsr*
+<div align="center">
+
+**Made with 💘 by @asbhaibsr**
+
+*"Group ka thanedar — rules todne walon ka koi future nahi" 😂*
+
+</div>
