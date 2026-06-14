@@ -6,20 +6,22 @@ from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
 
 from core.db import (
-    save_user, save_message, is_blocked, get_setting, is_premium,
+    save_user, save_message, is_blocked, get_setting, set_setting, is_premium,
     save_sticker, get_stickers,
     is_flooding, schedule_delete, save_active_member, inc_message_count,
     push_context, get_gaali_strikes, inc_gaali_strike, reset_gaali_strikes,
     store_file_hash, find_file_by_unique_id, get_note, get_all_notes,
     record_raid_join, detect_raid, add_warn, get_warns, reset_warns,
-    get_captcha, del_captcha,
-    # NEW additions
     save_movie_request, get_requesters_today,
     save_forward_cache, get_forward_cache,
     has_bio_perm, grant_bio_perm,
     get_captcha_token_doc, del_captcha_token, set_captcha_token,
     get_captcha_token_by_user,
+    set_captcha, get_captcha, del_captcha, inc_captcha_attempts,
+    update_captcha_input, get_captcha_input,
     get_global_stickers, save_global_stickers,
+    push_bot_reply, get_recent_bot_replies,   # Vercel-safe reply dedup
+    cleanup_old_data,                          # periodic stale data cleanup
 )
 from core.brain import (
     make_girl_reply, make_gaali_reply,
@@ -35,10 +37,10 @@ FORWARD_CHANNEL  = os.environ.get("FORWARD_CHANNEL", "")   # separate channel fo
 _bio_cache: dict = {}
 BIO_CACHE_TTL = 3600  # 1 hour
 
-# In-memory dedup: last N bot messages per chat to prevent repetition
-_last_bot_msgs: dict = {}  # chat_id → [last 5 replies]
+# In-memory dedup dict REMOVED — now using MongoDB (Vercel-safe)
+# Bot reply history stored via push_bot_reply / get_recent_bot_replies in core/db.py
 
-# Bulk message throttle: track message rate per chat
+# Bulk message throttle: in-memory rate limiter (losing this on Vercel restart is OK — minor)
 _bulk_tracker: dict = {}  # chat_id → {"count": int, "last_msg": datetime, "reply_idx": int}
 
 
@@ -177,16 +179,12 @@ async def _check_bio_links(context, user, bot_username: str = "") -> bool:
         return False
 
 def _is_bot_reply_duplicate(chat_id: int, reply_text: str) -> bool:
-    """Check if bot already sent this exact reply recently in this chat."""
-    last_msgs = _last_bot_msgs.get(chat_id, [])
-    return reply_text in last_msgs
+    """Check if bot already sent this reply recently — MongoDB-backed, Vercel-safe."""
+    return reply_text in get_recent_bot_replies(chat_id)
 
 def _record_bot_reply(chat_id: int, reply_text: str):
-    """Track last 5 bot replies per chat for dedup."""
-    if chat_id not in _last_bot_msgs:
-        _last_bot_msgs[chat_id] = []
-    _last_bot_msgs[chat_id].append(reply_text)
-    _last_bot_msgs[chat_id] = _last_bot_msgs[chat_id][-5:]
+    """Persist bot reply to MongoDB so dedup survives Vercel cold starts."""
+    push_bot_reply(chat_id, reply_text)
 
 # ══════════════════════════════════════════════════════════
 # CAPTION BUILDER — SOFT & HARD
@@ -447,14 +445,16 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"💾 <i>Jaldi Saved Messages mein save karo — delete ho jayegi!</i>"
         )
 
+    tag_line = ""   # tags go in separate message, not caption
+
     if del_info and caption_mode != "off" and delete_time_str:
         save_reminder = ""   # del_info already shown in caption — no duplicate warning
     else:
         save_reminder = ""
 
-    new_caption = (base_caption + tag_line + save_reminder).strip()[:1024] or None
+    new_caption = (base_caption + save_reminder).strip()[:1024] or None
 
-    # ── STEP 1: Forward to FILE_LOG_CHANNEL ───────────────
+    # ── STEP 1: Forward to FILE_LOG_CHANNEL (file only, no log msg) ─────
     if FILE_LOG_CHANNEL:
         try:
             await context.bot.forward_message(
@@ -462,17 +462,7 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 from_chat_id=chat.id,
                 message_id=message.message_id,
             )
-            await context.bot.send_message(
-                int(FILE_LOG_CHANNEL),
-                f"📁 <b>File Log</b>\n"
-                f"👤 {user.full_name} (<code>{user.id}</code>)\n"
-                f"👥 {chat.title} (<code>{chat.id}</code>)\n"
-                f"📋 Caption: <code>{(original_caption or 'None')[:200]}</code>\n"
-                f"🆔 UniqueID: <code>{unique_id}</code>\n"
-                f"🔑 Key: <code>{caption_key}</code>\n"
-                f"🎨 Mode: {caption_mode.upper()}",
-                parse_mode="HTML",
-            )
+            # No extra log message — sirf file forward ✅
         except Exception as e:
             print(f"[LOG] {e}")
 
@@ -529,14 +519,27 @@ async def movie_file_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             delete_at = datetime.now() + timedelta(seconds=del_secs)
             schedule_delete(chat.id, sent.message_id, delete_at)
 
-        # ── STEP 6: Playful save reminder (roast) ─────────
-        # Only when autodel is ON — nudge users to save before it's gone
-        if del_secs > 0 and _ROAST_MSGS and random.random() < 0.40:
+        # ── STEP 6: Send separate tag message for requesters ──
+        if requesters:
+            tags = "".join(
+                f'<a href="tg://user?id={r["user_id"]}">{r["user_name"]}</a> '
+                for r in requesters[:6]
+            )
+            await asyncio.sleep(0.5)
             try:
-                await asyncio.sleep(1.5)
-                await context.bot.send_message(chat.id, random.choice(_ROAST_MSGS))
+                await context.bot.send_message(
+                    chat.id,
+                    f"🔔 {tags}\n\n"
+                    f"🎬 <b>Ye rhi aapki maangi file!</b>\n"
+                    f"💾 Ise apne <b>Saved Messages</b> mein dal lo — file delete ho jayegi!\n\n"
+                    f"💡 <i>Agar aapke paas koi aur file ho to group mein share karo,\n"
+                    f"ek dusre ki madad karo! 🤝</i>",
+                    parse_mode="HTML",
+                )
             except Exception:
                 pass
+
+        # ── STEP 7: (roast messages removed per user request) ─
 
     except Exception as e:
         print(f"[MOVIE] Send error: {e}")
@@ -620,6 +623,48 @@ async def _apply_gaali_punishment(context, chat_id, user, strikes, message):
         )
 
 # ══════════════════════════════════════════════════════════
+def _make_captcha_word(length: int = 4) -> str:
+    consonants = "BCDFGHJKLMNPQRSTVWXYZ"
+    vowels     = "AEIOU"
+    word = ""
+    for i in range(length):
+        word += random.choice(vowels if i % 2 else consonants)
+    return word
+
+def _captcha_keyboard(chat_id: int, user_id: int, word: str, current: str) -> InlineKeyboardMarkup:
+    """Build A-Z button keyboard for captcha input."""
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    rows = []
+    # Letters in rows of 7
+    for i in range(0, 26, 7):
+        rows.append([
+            InlineKeyboardButton(ch, callback_data=f"ci_{chat_id}_{user_id}_{ch}")
+            for ch in letters[i:i+7]
+        ])
+    # Control row
+    rows.append([
+        InlineKeyboardButton("⌫ Del", callback_data=f"cc_{chat_id}_{user_id}"),
+        InlineKeyboardButton("✅ Submit", callback_data=f"cs_{chat_id}_{user_id}"),
+    ])
+    return InlineKeyboardMarkup(rows)
+
+def _captcha_text(word: str, current: str) -> str:
+    """Build captcha display text."""
+    display_word = "  ".join(word)       # "W  O  L  F"
+    blanks = "  ".join(
+        (current[i] if i < len(current) else "▢")
+        for i in range(len(word))
+    )
+    return (
+        f"🔐 <b>CAPTCHA VERIFY</b>\n"
+        f"-ˋˏ✄┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+        f"Niche word likha hai, buttons se wahi type karo:\n\n"
+        f"<code>[ {display_word} ]</code>\n\n"
+        f"Tumhara input: <code>[ {blanks} ]</code>\n\n"
+        f"💡 Sahi type karo phir ✅ Submit dabao!"
+    )
+
+# ══════════════════════════════════════════════════════════
 # CAPTCHA CALLBACK
 # ══════════════════════════════════════════════════════════
 async def captcha_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -628,26 +673,170 @@ async def captcha_callback_handler(update: Update, context: ContextTypes.DEFAULT
     chat    = query.message.chat
     clicker = query.from_user
 
+    # ── ci_CHATID_USERID_LETTER ── letter click
+    if data.startswith("ci_"):
+        parts = data.split("_")
+        if len(parts) < 4:
+            return
+        try:
+            c_id = int(parts[1]); u_id = int(parts[2]); letter = parts[3]
+        except ValueError:
+            return
+
+        if clicker.id != u_id:
+            await query.answer("Yeh tumhara captcha nahi! 😤", show_alert=True)
+            return
+
+        cap = get_captcha(c_id, u_id)
+        if not cap:
+            await query.answer("Captcha expire ho gaya! Wapas join karo.", show_alert=True)
+            return
+
+        word    = cap.get("word", "WOLF")
+        current = get_captcha_input(c_id, u_id)   # DB-safe, works on Vercel
+
+        # Don't exceed word length
+        if len(current) >= len(word):
+            await query.answer("Pehle submit karo ya clear karo!", show_alert=True)
+            return
+
+        current += letter
+        update_captcha_input(c_id, u_id, current)   # persist in DB
+        await query.answer(f"✎ {letter}")
+        try:
+            await query.edit_message_text(
+                _captcha_text(word, current),
+                parse_mode="HTML",
+                reply_markup=_captcha_keyboard(c_id, u_id, word, current),
+            )
+        except Exception:
+            pass
+        return
+
+    # ── cc_CHATID_USERID ── clear (backspace)
+    if data.startswith("cc_"):
+        parts = data.split("_")
+        if len(parts) < 3:
+            return
+        try:
+            c_id = int(parts[1]); u_id = int(parts[2])
+        except ValueError:
+            return
+
+        if clicker.id != u_id:
+            await query.answer("Yeh tumhara captcha nahi!", show_alert=True)
+            return
+
+        cap = get_captcha(c_id, u_id)
+        if not cap:
+            await query.answer("Captcha expire ho gaya!", show_alert=True)
+            return
+
+        word    = cap.get("word", "WOLF")
+        current = get_captcha_input(c_id, u_id)    # DB-safe
+        if current:
+            current = current[:-1]
+        update_captcha_input(c_id, u_id, current)
+        await query.answer("⌫ Deleted")
+        try:
+            await query.edit_message_text(
+                _captcha_text(word, current),
+                parse_mode="HTML",
+                reply_markup=_captcha_keyboard(c_id, u_id, word, current),
+            )
+        except Exception:
+            pass
+        return
+
+    # ── cs_CHATID_USERID ── submit
+    if data.startswith("cs_"):
+        parts = data.split("_")
+        if len(parts) < 3:
+            return
+        try:
+            c_id = int(parts[1]); u_id = int(parts[2])
+        except ValueError:
+            return
+
+        if clicker.id != u_id:
+            await query.answer("Yeh tumhara captcha nahi!", show_alert=True)
+            return
+
+        cap = get_captcha(c_id, u_id)
+        if not cap:
+            await query.answer("Captcha expire ho gaya!", show_alert=True)
+            return
+
+        word    = cap.get("word", "WOLF")
+        current = get_captcha_input(c_id, u_id)    # DB-safe
+        update_captcha_input(c_id, u_id, "")       # clear on submit
+
+        if current.upper() == word.upper():
+            # ✅ Correct — unrestrict
+            try:
+                await context.bot.restrict_chat_member(
+                    c_id, u_id,
+                    permissions=ChatPermissions(
+                        can_send_messages=True, can_send_media_messages=True,
+                        can_send_other_messages=True, can_add_web_page_previews=True,
+                    ),
+                )
+            except Exception:
+                pass
+            del_captcha(c_id, u_id)
+            await query.answer("✅ Sahi! Welcome~ 🎉")
+            try:
+                await query.edit_message_text(
+                    f"✅ <b>Verification Complete!</b>\n"
+                    f"{'█' * 10} 100%\n\n"
+                    f"🎉 {clicker.mention_html()} ne captcha pass kar liya!\n"
+                    f"Ab group mein freely message karo~ 🌸",
+                    parse_mode="HTML",
+                )
+            except Exception:
+                pass
+            # Show welcome message
+            from core.db import get_setting as _gs
+            if _gs(c_id, "welcome_on", True):
+                from core.persona import get_welcome as _gw
+                custom = _gs(c_id, "welcome_msg", None)
+                wtext  = (
+                    custom.replace("{name}", clicker.mention_html()).replace("{group}", chat.title or "")
+                    if custom else _gw(clicker.mention_html())
+                )
+                try:
+                    await context.bot.send_message(c_id, wtext, parse_mode="HTML")
+                except Exception:
+                    pass
+        else:
+            # ❌ Wrong — reset input in DB
+            update_captcha_input(c_id, u_id, "")
+            await query.answer("❌ Galat! Dobara koshish karo.", show_alert=True)
+            try:
+                await query.edit_message_text(
+                    f"❌ <b>Galat jawab!</b> Dobara try karo.\n\n"
+                    + _captcha_text(word, ""),
+                    parse_mode="HTML",
+                    reply_markup=_captcha_keyboard(c_id, u_id, word, ""),
+                )
+            except Exception:
+                pass
+        return
+
+    # Legacy fallback (old-style captcha_N_ANSWER)
     parts = data.split("_")
     if len(parts) < 3:
         return
     target_uid = int(parts[1])
     chosen_ans = parts[2]
-
     if clicker.id != target_uid:
         await query.answer("Yeh tumhara captcha nahi! 😤", show_alert=True)
         return
-
     captcha = get_captcha(chat.id, target_uid)
     if not captcha:
-        await query.answer("Captcha expire ho gaya!", show_alert=True)
-        try:
-            await query.message.delete()
-        except Exception:
-            pass
+        await query.answer("Captcha expire ho gaya!")
         return
-
-    if chosen_ans == captcha["answer"]:
+    if chosen_ans == captcha.get("answer"):
         try:
             await context.bot.restrict_chat_member(
                 chat.id, target_uid,
@@ -659,24 +848,10 @@ async def captcha_callback_handler(update: Update, context: ContextTypes.DEFAULT
         except Exception:
             pass
         del_captcha(chat.id, target_uid)
-        await query.answer("✅ Sahi jawab! Welcome!")
+        await query.answer("✅ Verified!")
         try:
             await query.edit_message_text(
-                f"✅ {clicker.mention_html()} ne captcha pass kar liya! Welcome~ 🌸",
-                parse_mode="HTML",
-            )
-        except Exception:
-            pass
-    else:
-        await query.answer("❌ Galat jawab! Bye!", show_alert=True)
-        del_captcha(chat.id, target_uid)
-        try:
-            await context.bot.ban_chat_member(chat.id, target_uid)
-            await asyncio.sleep(1)
-            await context.bot.unban_chat_member(chat.id, target_uid)
-            await query.edit_message_text(
-                f"❌ {clicker.full_name} captcha fail — <b>Kicked!</b>",
-                parse_mode="HTML",
+                f"✅ {clicker.mention_html()} verified! Welcome~ 🌸", parse_mode="HTML"
             )
         except Exception:
             pass
@@ -694,6 +869,62 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_blocked(user.id):
         return
 
+    # ══ CAPTCHA GUARD — delete message if user hasn't solved captcha ════
+    if chat.type != "private" and get_setting(chat.id, "captcha_on", False):
+        cap_doc = get_captcha(chat.id, user.id)
+        if cap_doc:
+            # Delete their message silently
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            attempts = inc_captcha_attempts(chat.id, user.id)
+            if attempts >= 3:
+                # Mute them until captcha solved
+                try:
+                    await context.bot.restrict_chat_member(
+                        chat.id, user.id,
+                        permissions=ChatPermissions(can_send_messages=False),
+                        until_date=0,
+                    )
+                except Exception:
+                    pass
+                try:
+                    await context.bot.send_message(
+                        chat.id,
+                        f"🔇 {user.mention_html()} — <b>3 baar bina captcha solve kiye message kiya!</b>\n"
+                        f"Pehle captcha solve karo — mute rahoge tab tak.\n\n"
+                        f"Niche button dabao! 👇",
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup([[
+                            InlineKeyboardButton(
+                                "🔐 Captcha Solve Karo",
+                                callback_data=f"ci_{chat.id}_{user.id}_X",
+                            )
+                        ]]),
+                    )
+                except Exception:
+                    pass
+            else:
+                cap_word = cap_doc.get("word", "WOLF")
+                try:
+                    cap_msg_id = cap_doc.get("msg_id", 0)
+                    if cap_msg_id:
+                        # Edit existing captcha message to remind
+                        try:
+                            await context.bot.edit_message_text(
+                                _captcha_text(cap_word, get_captcha_input(chat.id, user.id)),
+                                chat_id=chat.id,
+                                message_id=cap_msg_id,
+                                parse_mode="HTML",
+                                reply_markup=_captcha_keyboard(chat.id, user.id, cap_word, ""),
+                            )
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+            return   # Don't process this message further
+
     # ══ FIX 3: Skip document/video/audio in GROUPS ════════
     # movie_file_handler already handles those
     # Without this, chatbot replies to file captions in groups
@@ -707,12 +938,21 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Save user + analytics
     save_user(user)
+    # Vercel mein cron nahi — 1% chance pe old data cleanup karo silently
+    if random.random() < 0.01:
+        try:
+            cleanup_old_data()
+        except Exception:
+            pass
     if chat.type != "private":
         save_active_member(chat.id, user.id)
         inc_message_count(chat.id, user.id)
         if text:
-            save_message(chat.id, user.id, text)
-            push_context(chat.id, user.first_name, text)
+            # Rate-limit learning: only 1 message per chat every 1 second
+            # (handles 10 simultaneous users — only 1 gets learned)
+            if _bulk_should_reply(chat.id, window_sec=1.0):
+                save_message(chat.id, user.id, text)
+                push_context(chat.id, user.first_name, text)
             # Track as potential movie request (used to tag users when file arrives)
             if len(text) >= 2 and not text.startswith("/"):
                 save_movie_request(chat.id, user.id, user.first_name, text)
@@ -803,10 +1043,18 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if text:
             reply = make_girl_reply(text, chat_id=chat.id, user_name=user.first_name)
-            await asyncio.sleep(random.uniform(0.5, 1.5))
-            await context.bot.send_chat_action(chat.id, ChatAction.TYPING)
-            await asyncio.sleep(random.uniform(0.8, 2.0))
-            await message.reply_text(reply)
+            if reply:
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+                await context.bot.send_chat_action(chat.id, ChatAction.TYPING)
+                await asyncio.sleep(random.uniform(0.8, 2.0))
+                await message.reply_text(reply)
+            else:
+                # No learned reply — send a sticker if available
+                from core.db import get_stickers as _get_s, get_global_stickers as _get_gs
+                _stkrs = _get_gs() + _get_s(chat.id)
+                if _stkrs:
+                    await asyncio.sleep(0.5)
+                    await message.reply_sticker(random.choice(_stkrs))
         return
 
     # ── Captcha token verification ──────────────────────────
@@ -858,13 +1106,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
     # ── Sticker save mode ──────────────────────────────────
-    if chat.type != "private" and message.sticker:
-        if get_setting(chat.id, "sticker_pending", False):
-            if await _is_user_admin(context, chat.id, user.id):
-                save_sticker(chat.id, message.sticker.file_id)
-                await message.reply_text("✅ Sticker saved! Aur bhejo ya /stickerdone karo.")
-                return
-
     # ── Filter auto-reply ───────────────────────────────────
     if chat.type != "private" and text:
         from handlers.filters import check_and_reply_filter
@@ -1020,18 +1261,21 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if reply_user and reply_user.id != context.bot.id:
-        # User kisi dusre user ko reply/tag kar raha hai → 10% chance
-        # (Bot pattern seekhta rahe, kabhi kabhi participate kare)
-        should_reply = random.random() < 0.10
+        # User kisi dusre user ko reply/tag kar raha hai → utu_pct% chance
+        utu_pct = get_setting(chat.id, "chat_utu_pct", 10) / 100
+        should_reply = random.random() < utu_pct
     elif reply_user and reply_user.id == context.bot.id:
-        # User ne bot ko directly reply kiya → 80%
-        should_reply = random.random() < 0.80
+        # User ne bot ko directly reply kiya → solo_pct%
+        solo_pct = get_setting(chat.id, "chat_solo_pct", 80) / 100
+        should_reply = random.random() < solo_pct
     elif mentioned:
-        # Bot ka naam/trigger liya → 80%
-        should_reply = random.random() < 0.80
+        # Bot ka naam/trigger liya → solo_pct%
+        solo_pct = get_setting(chat.id, "chat_solo_pct", 80) / 100
+        should_reply = random.random() < solo_pct
     else:
-        # Normal standalone message → 80%
-        should_reply = random.random() < 0.80
+        # Normal standalone message → solo_pct%
+        solo_pct = get_setting(chat.id, "chat_solo_pct", 80) / 100
+        should_reply = random.random() < solo_pct
 
     if not should_reply:
         return
@@ -1042,9 +1286,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply = make_gaali_reply(chat.id)
     else:
         reply = make_girl_reply(text, chat_id=chat.id, user_name=user.first_name)
-        if not reply:
-            reply = make_girl_reply(chat_id=chat.id)
-
+        # Userbot session fallback (if configured)
         if not reply:
             try:
                 import os as _os
@@ -1054,13 +1296,28 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as _ube:
                 print(f"[USERBOT FALLBACK] {_ube}")
 
-    if not reply:
-        return
-
     # Skip if same as recent bot message (anti-spam)
-    if _is_bot_reply_duplicate(chat.id, reply):
+    if reply and _is_bot_reply_duplicate(chat.id, reply):
+        reply = None
+
+    if reply:
+        _record_bot_reply(chat.id, reply)
+
+    # If NO text reply → try sending a sticker instead
+    if not reply:
+        global_stickers = get_global_stickers()
+        saved_stickers  = get_stickers(chat.id)
+        all_stickers    = global_stickers + saved_stickers
+        if all_stickers and random.random() < 0.35:
+            try:
+                delay = min(0.8 + len(text) * 0.03, 3.0)
+                await asyncio.sleep(random.uniform(delay * 0.4, delay * 0.8))
+                await context.bot.send_chat_action(chat.id, ChatAction.TYPING)
+                await asyncio.sleep(0.3)
+                await message.reply_sticker(random.choice(all_stickers))
+            except Exception:
+                pass
         return
-    _record_bot_reply(chat.id, reply)
 
     # ── Typing delay (feels natural) ──────────────────────
     delay = min(0.8 + len(text) * 0.03, 3.0)
@@ -1080,6 +1337,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await asyncio.sleep(0.4)
                 await message.reply_sticker(random.choice(all_stickers))
             except Exception:
+                pass
                 pass
         elif should_send_sticker():
             sticker_id = get_sticker("happy")
