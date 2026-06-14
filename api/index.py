@@ -48,6 +48,7 @@ def _import_handlers():
         autodel_time_handler, warnlimit_handler,
         adminlist_handler,
         setcommands_handler, biofree_handler,
+        learn_from_groups_handler,
     )
     from handlers.user import (
         help_handler, rules_handler,
@@ -140,7 +141,8 @@ async def get_bot_app() -> Application:
         ("unlock_raid", h["unlock_raid_handler"]),
         ("adminlist",   h["adminlist_handler"]),
         ("setcommands", h["setcommands_handler"]),
-        ("biofree",     h["biofree_handler"]),
+        ("biofree",             h["biofree_handler"]),
+        ("learnfromgroups",     h["learn_from_groups_handler"]),
         ("report",      h["report_handler"]),
         # ── Filter commands ──────────────────────────────
         # ── String session + Sticker commands ──────────────
