@@ -116,8 +116,22 @@ def _main_settings_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     ])
 
 def _chatbot_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    solo_pct = get_setting(chat_id, "chat_solo_pct", 80)
+    utu_pct  = get_setting(chat_id, "chat_utu_pct",  10)
+    def _pct_row(key, cur):
+        return [
+            InlineKeyboardButton(
+                f"{'●' if p == cur else p}%",
+                callback_data=f"set_pct_{key}_{p}",
+            )
+            for p in [0, 10, 20, 30, 50, 80, 100]
+        ]
     return InlineKeyboardMarkup([
-        [_tog_btn(chat_id, "Chatbot (Group mein reply)", "chat_bot_on", True)],
+        [_tog_btn(chat_id, "🤖 Chat Reply", "chat_bot_on", True)],
+        [InlineKeyboardButton("── Normal message reply% ──", callback_data="noop")],
+        _pct_row("solo", solo_pct),
+        [InlineKeyboardButton("── User→User reply% ──", callback_data="noop")],
+        _pct_row("utu", utu_pct),
         [InlineKeyboardButton("« Back", callback_data="settings_main")],
     ])
 
@@ -2171,6 +2185,30 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             await query.answer(f"🔒 {lt} locked!")
         set_setting(chat.id, "locked_types", locked)
 
+    # ── noop — label buttons do nothing ─────────────────────
+    elif data == "noop":
+        await query.answer()
+
+    # ── set_pct_KEY_VALUE — chatbot reply % ─────────────────
+    elif data.startswith("set_pct_"):
+        if not await _is_user_admin(context, chat.id, user.id):
+            await query.answer("❌ Sirf admins!", show_alert=True)
+            return
+        parts = data.split("_")   # set pct KEY VAL
+        pct_key = parts[2]; pct_val = int(parts[3])
+        setting_key = "chat_solo_pct" if pct_key == "solo" else "chat_utu_pct"
+        label       = "Normal msg" if pct_key == "solo" else "User→User msg"
+        set_setting(chat.id, setting_key, pct_val)
+        await query.answer(f"✅ {label}: {pct_val}%")
+        try:
+            await query.edit_message_text(
+                _get_cat_text("scat_chatbot", chat.id),
+                parse_mode="HTML",
+                reply_markup=_chatbot_keyboard(chat.id),
+            )
+        except Exception:
+            pass
+
     elif data == "settings_main":
         prem = is_premium(chat.id)
         status = "👑 Premium Active" if prem else "🆓 Free — /premium se upgrade karo"
@@ -2522,22 +2560,4 @@ async def biofree_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             uid = int(context.args[0])
             target_obj = type("U", (), {"id": uid, "full_name": str(uid), "mention_html": lambda: f"<code>{uid}</code>"})()
         except Exception:
-            await message.reply_text("❌ User nahi mila!")
-            return
-        from core.db import grant_bio_perm
-        grant_bio_perm(chat.id, uid)
-        await message.reply_text(
-            f"✅ User <code>{uid}</code> ko bio permission mil gayi!\n"
-            f"Ab wo group mein freely message kar sakta/sakti hai. 🌸",
-            parse_mode="HTML",
-        )
-        return
-
-    from core.db import grant_bio_perm
-    grant_bio_perm(chat.id, target.id)
-    await message.reply_text(
-        f"✅ {target.mention_html()} ko bio permission mil gayi!\n"
-        f"Ab wo group mein freely message kar sakta/sakti hai. 🌸",
-        parse_mode="HTML",
-    )
-
+            await message.reply_text("
